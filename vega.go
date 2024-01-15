@@ -21,15 +21,14 @@ import (
 // Wraps a goja runtime vm, and uses embedded javascript to render the Vega
 // visualizations.
 type Vega struct {
-	r               *goja.Runtime
-	vegaVersion     func() string
-	vegaLiteVersion func() string
-	render          func(logger func([]string), loader func(string) (string, error), cb func(string), spec string, data string) string
-	logger          func(...interface{})
-	loader          func(string) ([]byte, error)
-	data            fs.FS
-	once            sync.Once
-	err             error
+	r           *goja.Runtime
+	vegaVersion func() string
+	render      func(logger func([]string), loader func(string) (string, error), cb func(string), spec string, data string) string
+	logger      func(...interface{})
+	loader      func(string) ([]byte, error)
+	data        fs.FS
+	once        sync.Once
+	err         error
 }
 
 // New creates a new vega instance.
@@ -48,8 +47,8 @@ func (vm *Vega) init() error {
 		r := goja.New()
 		registry.Enable(r)
 		console.Enable(r)
-		for _, name := range []string{"vega.min.js" /*, "vega-lite.min.js"*/, "vegagoja.js"} {
-			buf, err := jsScripts.ReadFile(name)
+		for _, name := range []string{"vega.min.js", "vegagoja.js"} {
+			buf, err := vegaScripts.ReadFile(name)
 			if err != nil {
 				vm.err = fmt.Errorf("unable to load %s: %w", name, err)
 				return
@@ -73,10 +72,6 @@ func (vm *Vega) init() error {
 			vm.err = fmt.Errorf("unable to export version func: %w", err)
 			return
 		}
-		if err := r.ExportTo(r.Get("vega_lite_version"), &vm.vegaLiteVersion); err != nil {
-			vm.err = fmt.Errorf("unable to export version func: %w", err)
-			return
-		}
 		if err := r.ExportTo(r.Get("render"), &vm.render); err != nil {
 			vm.err = fmt.Errorf("unable to export render func: %w", err)
 			return
@@ -86,20 +81,12 @@ func (vm *Vega) init() error {
 	return vm.err
 }
 
-// VegaVersion returns the embedded vega version.
-func (vm *Vega) VegaVersion() (string, error) {
+// Version returns the embedded vega version.
+func (vm *Vega) Version() (string, error) {
 	if err := vm.init(); err != nil {
 		return "", err
 	}
 	return strings.TrimPrefix(vm.vegaVersion(), "v"), nil
-}
-
-// VegaLiteVersion returns the embedded vega lite version.
-func (vm *Vega) VegaLiteVersion() (string, error) {
-	if err := vm.init(); err != nil {
-		return "", err
-	}
-	return strings.TrimPrefix(vm.vegaLiteVersion(), "v"), nil
 }
 
 // Render renders the spec with the specified data.
@@ -219,15 +206,10 @@ func (f *fallbackFS) Open(name string) (fs.File, error) {
 //go:embed vega-version.txt
 var vegaVersionTxt string
 
-// vegaliteVersionTxt is the embedded vegalite-version.txt.
-//
-//go:embed vegalite-version.txt
-var vegaliteVersionTxt string
-
-// jsScripts are the embedded js scripts.
+// vegaScripts are the embedded vega javascripts.
 //
 //go:embed *.js
-var jsScripts embed.FS
+var vegaScripts embed.FS
 
 // vegaData is the embedded vega data.
 //

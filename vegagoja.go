@@ -8,17 +8,9 @@ import (
 // DefaultVM is the default goja vm.
 var DefaultVM = New()
 
-// Version returns the embedded vega and vega lite versions.
-func Version() (string, string, error) {
-	vegaVer, err := DefaultVM.VegaVersion()
-	if err != nil {
-		return "", "", err
-	}
-	vegaLiteVer, err := DefaultVM.VegaLiteVersion()
-	if err != nil {
-		return "", "", err
-	}
-	return vegaVer, vegaLiteVer, nil
+// Version returns the embedded vega version.
+func Version() (string, error) {
+	return DefaultVM.Version()
 }
 
 // Render renders the spec with the specified data.
