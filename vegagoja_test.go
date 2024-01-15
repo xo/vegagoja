@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +76,7 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	s, err := vm.Render(ctx, string(spec), "")
 	total := time.Now().Sub(start)
 	switch {
-	case err != nil && slices.Contains(broken, testName):
+	case err != nil && contains(broken, testName):
 		t.Logf("IGNORING: expected no error, got: %v", err)
 		return
 	case err != nil:
@@ -88,6 +87,15 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
+}
+
+func contains(v []string, s string) bool {
+	for _, ss := range v {
+		if ss == s {
+			return true
+		}
+	}
+	return false
 }
 
 var broken = []string{
