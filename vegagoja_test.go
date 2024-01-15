@@ -13,14 +13,14 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	vegaVer, err := Version()
+	ver, err := New().Version()
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if exp := strings.TrimSpace(string(vegaVersionTxt)); vegaVer != exp {
-		t.Errorf("expected %s, got: %s", exp, vegaVer)
+	if exp := strings.TrimSpace(string(vegaVersionTxt)); ver != exp {
+		t.Errorf("expected %s, got: %s", exp, ver)
 	}
-	t.Logf("vega version: %s", vegaVer)
+	t.Logf("vega version: %s", ver)
 }
 
 func TestRender(t *testing.T) {
@@ -73,7 +73,7 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 		WithVegaDemoData(),
 	)
 	start := time.Now()
-	s, err := vm.Render(ctx, string(spec), "")
+	s, err := vm.Render(ctx, string(spec))
 	total := time.Now().Sub(start)
 	switch {
 	case err != nil && contains(broken, testName):

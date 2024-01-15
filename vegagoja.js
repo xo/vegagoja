@@ -2,12 +2,7 @@ function vega_version() {
   return vega.version;
 }
 
-function vega_lite_version() {
-  return "";
-  //return vegaLite.version;
-}
-
-function render(logf, loadf, cb, spec, data) {
+function render(logf, loadf, cb, spec) {
   const logger = {
     level(_) {},
     error() {
