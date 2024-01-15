@@ -25,6 +25,13 @@ func TestVersion(t *testing.T) {
 
 func TestRender(t *testing.T) {
 	ctx := context.Background()
+	timeout := 1 * time.Minute
+	if s := os.Getenv("TIMEOUT"); s != "" {
+		var err error
+		if timeout, err = time.ParseDuration(s); err != nil {
+			t.Fatalf("could not parse timeout %q: %v", s, err)
+		}
+	}
 	var files []string
 	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
 		switch {
@@ -44,21 +51,21 @@ func TestRender(t *testing.T) {
 		n := strings.Split(name, string(os.PathSeparator))
 		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
 		t.Run(path.Join(n[1:]...), func(t *testing.T) {
-			testRender(t, ctx, name)
+			testRender(t, ctx, name, timeout)
 		})
 	}
 }
 
 var suffixRE = regexp.MustCompile(`\.v[gl]\.json$`)
 
-func testRender(t *testing.T, ctx context.Context, name string) {
+func testRender(t *testing.T, ctx context.Context, name string, timeout time.Duration) {
 	t.Helper()
 	t.Parallel()
 	spec, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	vm := New(
 		WithLogger(t.Log),
