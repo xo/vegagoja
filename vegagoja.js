@@ -1,5 +1,10 @@
-function version() {
+function vega_version() {
   return vega.version;
+}
+
+function vega_lite_version() {
+  return "";
+  //return vegaLite.version;
 }
 
 function render(logf, loadf, cb, spec, data) {
@@ -19,16 +24,14 @@ function render(logf, loadf, cb, spec, data) {
     },
   };
   const loader = {
-    load(name) {
+    load(name, res) {
       var s = "";
       try {
         s = loadf(name);
       } catch (e) {
         logf(["LOAD ERROR", e]);
       }
-      //logf(["result", s]);
-      return "";
-      //return JSON.parse(s);
+      return s;
     },
   };
   try {
@@ -36,8 +39,10 @@ function render(logf, loadf, cb, spec, data) {
     var runtime = vega.parse(s);
     var view = new vega.View(runtime, {
       loader: loader,
+      logger: logger,
+      logLevel: vega.Debug,
     });
-    view.logger(logger).toSVG().then(cb);
+    view.toSVG().then(cb);
   } catch (e) {
     throw e;
   } finally {

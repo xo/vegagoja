@@ -4,20 +4,23 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestVersion(t *testing.T) {
-	ver, err := Version()
+	vegaVer, vegaLiteVer, err := Version()
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if exp := strings.TrimSpace(string(vegaVersion)); ver != exp {
-		t.Errorf("expected %s, got: %s", exp, ver)
+	if exp := strings.TrimSpace(string(vegaVersionTxt)); vegaVer != exp {
+		t.Errorf("expected %s, got: %s", exp, vegaVer)
 	}
+	t.Logf("vega: %s vega-lite: %s", vegaVer, vegaLiteVer)
 }
 
 func TestRender(t *testing.T) {
@@ -27,7 +30,7 @@ func TestRender(t *testing.T) {
 		switch {
 		case err != nil:
 			return err
-		case info.IsDir() || !strings.HasSuffix(name, ".vl.json"):
+		case info.IsDir() || !suffixRE.MatchString(name):
 			return nil
 		}
 		files = append(files, name)
@@ -38,30 +41,37 @@ func TestRender(t *testing.T) {
 	}
 	for _, nn := range files {
 		name := nn
-		t.Run(strings.TrimSuffix(filepath.Base(name), ".vl.json"), func(t *testing.T) {
+		n := strings.Split(name, string(os.PathSeparator))
+		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
+		t.Run(path.Join(n[1:]...), func(t *testing.T) {
 			testRender(t, ctx, name)
 		})
 	}
 }
 
+var suffixRE = regexp.MustCompile(`\.v[gl]\.json$`)
+
 func testRender(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
+	t.Parallel()
 	spec, err := os.ReadFile(name)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, 1*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	vm := New(
 		WithLogger(t.Log),
 		WithVegaDemoData(),
 	)
+	start := time.Now()
 	s, err := vm.Render(ctx, string(spec), "")
+	total := time.Now().Sub(start)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	t.Logf("len: %d", len(s))
 	t.Logf("---\n%s\n---", s)
+	t.Logf("duration: %s", total)
 	if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

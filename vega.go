@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/dop251/goja"
@@ -20,14 +21,15 @@ import (
 // Wraps a goja runtime vm, and uses embedded javascript to render the Vega
 // visualizations.
 type Vega struct {
-	r       *goja.Runtime
-	version func() string
-	render  func(logger func([]string), loader func(string) (string, error), cb func(string), spec string, data string) string
-	logger  func(...interface{})
-	loader  func(string) ([]byte, error)
-	data    fs.FS
-	once    sync.Once
-	err     error
+	r               *goja.Runtime
+	vegaVersion     func() string
+	vegaLiteVersion func() string
+	render          func(logger func([]string), loader func(string) (string, error), cb func(string), spec string, data string) string
+	logger          func(...interface{})
+	loader          func(string) ([]byte, error)
+	data            fs.FS
+	once            sync.Once
+	err             error
 }
 
 // New creates a new vega instance.
@@ -46,8 +48,8 @@ func (vm *Vega) init() error {
 		r := goja.New()
 		registry.Enable(r)
 		console.Enable(r)
-		for _, name := range []string{"vega.js", "vegagoja.js"} {
-			buf, err := vegaScripts.ReadFile(name)
+		for _, name := range []string{"vega.min.js" /*, "vega-lite.min.js"*/, "vegagoja.js"} {
+			buf, err := jsScripts.ReadFile(name)
 			if err != nil {
 				vm.err = fmt.Errorf("unable to load %s: %w", name, err)
 				return
@@ -67,7 +69,11 @@ func (vm *Vega) init() error {
 				return
 			}
 		}
-		if err := r.ExportTo(r.Get("version"), &vm.version); err != nil {
+		if err := r.ExportTo(r.Get("vega_version"), &vm.vegaVersion); err != nil {
+			vm.err = fmt.Errorf("unable to export version func: %w", err)
+			return
+		}
+		if err := r.ExportTo(r.Get("vega_lite_version"), &vm.vegaLiteVersion); err != nil {
 			vm.err = fmt.Errorf("unable to export version func: %w", err)
 			return
 		}
@@ -80,12 +86,20 @@ func (vm *Vega) init() error {
 	return vm.err
 }
 
-// Version returns the vega version.
-func (vm *Vega) Version() (string, error) {
+// VegaVersion returns the embedded vega version.
+func (vm *Vega) VegaVersion() (string, error) {
 	if err := vm.init(); err != nil {
 		return "", err
 	}
-	return vm.version(), nil
+	return strings.TrimPrefix(vm.vegaVersion(), "v"), nil
+}
+
+// VegaLiteVersion returns the embedded vega lite version.
+func (vm *Vega) VegaLiteVersion() (string, error) {
+	if err := vm.init(); err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(vm.vegaLiteVersion(), "v"), nil
 }
 
 // Render renders the spec with the specified data.
@@ -128,26 +142,26 @@ func (vm *Vega) log(s []string) {
 
 // load is the script callback for loading a remote url.
 func (vm *Vega) load(name string) (string, error) {
-	if vm.loader != nil {
+	switch {
+	case vm.loader != nil:
 		buf, err := vm.loader(name)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("loader could not open %s: %w", name, err)
 		}
 		return string(buf), nil
-	}
-	if vm.data != nil {
+	case vm.data != nil:
 		f, err := vm.data.Open(name)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("could not open from data %s: %w", name, err)
 		}
 		defer f.Close()
 		buf, err := io.ReadAll(f)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("unable to read all data for %s: %w", name, err)
 		}
 		return string(buf), nil
 	}
-	return "", os.ErrNotExist
+	return "", fmt.Errorf("no loader for %s: %w", name, os.ErrNotExist)
 }
 
 // Option is a vega option.
@@ -200,15 +214,20 @@ func (f *fallbackFS) Open(name string) (fs.File, error) {
 	return nil, os.ErrNotExist
 }
 
-// vegaVersion is the embedded version.txt.
+// vegaVersionTxt is the embedded vega-version.txt.
 //
-//go:embed version.txt
-var vegaVersion string
+//go:embed vega-version.txt
+var vegaVersionTxt string
 
-// vegaScripts are the embedded vega scripts.
+// vegaliteVersionTxt is the embedded vegalite-version.txt.
+//
+//go:embed vegalite-version.txt
+var vegaliteVersionTxt string
+
+// jsScripts are the embedded js scripts.
 //
 //go:embed *.js
-var vegaScripts embed.FS
+var jsScripts embed.FS
 
 // vegaData is the embedded vega data.
 //
