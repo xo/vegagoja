@@ -60,7 +60,7 @@ function vega_render(logf, spec, loadf, cb) {
     });
     view.toSVG().then(cb);
   } catch (e) {
-    logf(["RENDER ERROR"], e);
+    logf(["RENDER ERROR", e]);
     throw e;
   } finally {
     if (view) {
