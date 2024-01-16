@@ -2,8 +2,10 @@
 package vegagoja
 
 import (
+	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,19 +19,23 @@ import (
 	"github.com/dop251/goja_nodejs/require"
 )
 
+// renderFunc is the signature for the render function.
+type renderFunc func(logger func([]string), spec string, data interface{}, cb func(string)) string
+
 // Vega handles rendering Vega visualizations as SVGs.
 //
 // Wraps a goja runtime vm, and uses embedded javascript to render the Vega
 // visualizations.
 type Vega struct {
-	r           *goja.Runtime
-	vegaVersion func() string
-	render      func(logger func([]string), loader func(string) (string, error), cb func(string), spec string) string
-	logger      func(...interface{})
-	loader      func(string) ([]byte, error)
-	data        fs.FS
-	once        sync.Once
-	err         error
+	r          *goja.Runtime
+	vegaVer    func() string
+	liteVer    func() string
+	vegaRender renderFunc
+	liteRender renderFunc
+	logger     func(...interface{})
+	sources    fs.FS
+	once       sync.Once
+	err        error
 }
 
 // New creates a new vega instance.
@@ -48,7 +54,7 @@ func (vm *Vega) init() error {
 		r := goja.New()
 		registry.Enable(r)
 		console.Enable(r)
-		for _, name := range []string{"vega.min.js", "vegagoja.js"} {
+		for _, name := range []string{"vega.min.js", "vega-lite.min.js", "vegagoja.js"} {
 			buf, err := vegaScripts.ReadFile(name)
 			if err != nil {
 				vm.err = fmt.Errorf("unable to load %s: %w", name, err)
@@ -69,12 +75,20 @@ func (vm *Vega) init() error {
 				return
 			}
 		}
-		if err := r.ExportTo(r.Get("vega_version"), &vm.vegaVersion); err != nil {
-			vm.err = fmt.Errorf("unable to export version func: %w", err)
+		if err := r.ExportTo(r.Get("vega_version"), &vm.vegaVer); err != nil {
+			vm.err = fmt.Errorf("unable to bind vega_version func: %w", err)
 			return
 		}
-		if err := r.ExportTo(r.Get("render"), &vm.render); err != nil {
-			vm.err = fmt.Errorf("unable to export render func: %w", err)
+		if err := r.ExportTo(r.Get("vega_lite_version"), &vm.liteVer); err != nil {
+			vm.err = fmt.Errorf("unable to bind vega_lite_version func: %w", err)
+			return
+		}
+		if err := r.ExportTo(r.Get("vega_render"), &vm.vegaRender); err != nil {
+			vm.err = fmt.Errorf("unable to bind vega_render func: %w", err)
+			return
+		}
+		if err := r.ExportTo(r.Get("vega_lite_render"), &vm.liteRender); err != nil {
+			vm.err = fmt.Errorf("unable to bind vega_lite_render func: %w", err)
 			return
 		}
 		vm.r = r
@@ -83,11 +97,13 @@ func (vm *Vega) init() error {
 }
 
 // Version returns the embedded vega version.
-func (vm *Vega) Version() (string, error) {
+func (vm *Vega) Version() (string, string, error) {
 	if err := vm.init(); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return strings.TrimPrefix(vm.vegaVersion(), "v"), nil
+	vegaVer := strings.TrimPrefix(vm.vegaVer(), "v")
+	liteVer := strings.TrimPrefix(vm.liteVer(), "v")
+	return vegaVer, liteVer, nil
 }
 
 // Render renders the spec with the specified data.
@@ -104,11 +120,19 @@ func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error)
 			}
 		}
 	}()
+	f := vm.vegaRender
+	switch s, ok := decodeSchema(spec); {
+	case !ok:
+		err = fmt.Errorf("spec does not contain or has invalid $schema definition")
+		return
+	case strings.Contains(s, "vega-lite"):
+		f = vm.liteRender
+	}
 	ch := make(chan struct{})
-	vm.render(vm.log, vm.load, func(s string) {
+	f(vm.log, spec, vm.data(), func(s string) {
 		defer close(ch)
 		res = s
-	}, spec)
+	})
 	select {
 	case <-ctx.Done():
 		err = ctx.Err()
@@ -128,17 +152,15 @@ func (vm *Vega) log(s []string) {
 	}
 }
 
-// load is the script callback for loading a remote url.
+// data returns the
+func (vm *Vega) data() interface{} {
+	return vm.load
+}
+
+// load loads data from sources.
 func (vm *Vega) load(name string) (string, error) {
-	switch {
-	case vm.loader != nil:
-		buf, err := vm.loader(name)
-		if err != nil {
-			return "", fmt.Errorf("loader could not open %s: %w", name, err)
-		}
-		return string(buf), nil
-	case vm.data != nil:
-		f, err := vm.data.Open(name)
+	if vm.sources != nil {
+		f, err := vm.sources.Open(name)
 		if err != nil {
 			return "", fmt.Errorf("could not open from data %s: %w", name, err)
 		}
@@ -162,29 +184,72 @@ func WithLogger(logger func(...interface{})) Option {
 	}
 }
 
-// WithLoader is a vega option to set the loader.
-func WithLoader(loader func(string) ([]byte, error)) Option {
+// WithResultSet is a vega option to set the data from a result set.
+func WithResultSet(resultSet ResultSet) Option {
 	return func(vm *Vega) {
-		vm.loader = loader
 	}
 }
 
-// WithData is a vega option to set a [fs.FS] from which to read data.
-func WithData(data fs.FS) Option {
+// WithRecords is a vega option to set the data from a set of headers and
+// records.
+func WithRecords(headers []string, records [][]string) Option {
 	return func(vm *Vega) {
-		vm.data = data
 	}
 }
 
-// WithVegaDemoData is a vega option to add the embedded vega demo data. Useful
-// for rendering Vega's example visualizations. Additional sources can be
-// provided that will take priority when loading data.
-func WithVegaDemoData(sources ...fs.FS) Option {
+// WithCSV is a vega option to read csv data from the supplied reader.
+func WithCSV(r io.Reader) Option {
 	return func(vm *Vega) {
-		vm.data = &fallbackFS{
+	}
+}
+
+// WithCSVString is a vega option to read csv data from the string.
+func WithCSVString(s string) Option {
+	return func(vm *Vega) {
+		WithCSV(strings.NewReader(s))(vm)
+	}
+}
+
+// WithCSVBytes is a vega option to read csv data from the bytes.
+func WithCSVBytes(buf []byte) Option {
+	return func(vm *Vega) {
+		WithCSV(bytes.NewReader(buf))(vm)
+	}
+}
+
+// WithSources is a vega option to set the source file systems ([fs.FS]) from
+// which to load data.
+func WithSources(sources ...fs.FS) Option {
+	return func(vm *Vega) {
+		if len(sources) == 1 {
+			vm.sources = sources[0]
+		} else {
+			vm.sources = &fallbackFS{
+				sources: sources,
+			}
+		}
+	}
+}
+
+// WithDemoData is a vega option to add the vega demo data. Useful for
+// rendering Vega's example visualizations. Additional source file systems
+// ([fs.FS]) can be provided that will take priority when loading data.
+func WithDemoData(sources ...fs.FS) Option {
+	return func(vm *Vega) {
+		vm.sources = &fallbackFS{
 			sources: append(sources, vegaData),
 		}
 	}
+}
+
+// ResultSet is the shared interface for a result set.
+type ResultSet interface {
+	Next() bool
+	Scan(...interface{}) error
+	Columns() ([]string, error)
+	Close() error
+	Err() error
+	NextResultSet() bool
 }
 
 // fallbackFS is a fallback [fs.FS] implementation.
@@ -202,10 +267,39 @@ func (f *fallbackFS) Open(name string) (fs.File, error) {
 	return nil, os.ErrNotExist
 }
 
+// decodeSchema decodes the schema from the spec.
+func decodeSchema(spec string) (string, bool) {
+	// check $schema definition
+	var m map[string]interface{}
+	if err := json.NewDecoder(strings.NewReader(spec)).Decode(&m); err != nil {
+		return "", false
+	}
+	s, ok := m["$schema"]
+	if !ok {
+		return "", false
+	}
+	schema, ok := s.(string)
+	if !ok {
+		return "", false
+	}
+	return schema, strings.HasPrefix(schema, vegaSchemaPrefix) || strings.HasPrefix(schema, liteSchemaPrefix)
+}
+
+// vega schema prefixes.
+const (
+	vegaSchemaPrefix = "https://vega.github.io/schema/vega/"
+	liteSchemaPrefix = "https://vega.github.io/schema/vega-lite/"
+)
+
 // vegaVersionTxt is the embedded vega-version.txt.
 //
 //go:embed vega-version.txt
 var vegaVersionTxt string
+
+// liteVersionTxt is the embedded vega-lite-version.txt.
+//
+//go:embed vega-lite-version.txt
+var liteVersionTxt string
 
 // vegaScripts are the embedded vega javascripts.
 //
