@@ -1,4 +1,4 @@
-// Package vegagoja renders Vega visualizations as SVGs.
+// Package vegagoja renders Vega and Vega Lite visualizations as SVGs.
 package vegagoja
 
 import (
@@ -19,15 +19,8 @@ import (
 	"github.com/dop251/goja_nodejs/require"
 )
 
-// loggerFunc is the signature for the log func.
-type loggerFunc func([]string)
-
-// renderFunc is the signature for the render func.
-type renderFunc func(logger loggerFunc, spec string, data interface{}, cb func(string)) string
-
-// Vega handles rendering Vega visualizations as SVGs.
-//
-// Wraps a goja runtime vm, and uses embedded javascript to render the Vega
+// Vega handles rendering Vega and Vega Lite visualizations as SVGs. Wraps a
+// goja runtime vm, and uses embedded javascript to render Vega and Vega Lite
 // visualizations.
 type Vega struct {
 	r           *goja.Runtime
@@ -300,6 +293,12 @@ func decodeSchema(spec string) (string, bool) {
 	}
 	return schema, strings.HasPrefix(schema, vegaSchemaPrefix) || strings.HasPrefix(schema, liteSchemaPrefix)
 }
+
+// loggerFunc is the signature for the log func.
+type loggerFunc func([]string)
+
+// renderFunc is the signature for the render func.
+type renderFunc func(logger loggerFunc, spec string, data interface{}, cb func(string)) string
 
 // vega schema prefixes.
 const (
