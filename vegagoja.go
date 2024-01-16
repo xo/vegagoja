@@ -27,15 +27,16 @@ type renderFunc func(logger func([]string), spec string, data interface{}, cb fu
 // Wraps a goja runtime vm, and uses embedded javascript to render the Vega
 // visualizations.
 type Vega struct {
-	r          *goja.Runtime
-	vegaVer    func() string
-	liteVer    func() string
-	vegaRender renderFunc
-	liteRender renderFunc
-	logger     func(...interface{})
-	sources    fs.FS
-	once       sync.Once
-	err        error
+	r           *goja.Runtime
+	vegaVer     func() string
+	liteVer     func() string
+	vegaRender  renderFunc
+	liteRender  renderFunc
+	liteCompile func(string) (string, error)
+	logger      func(...interface{})
+	sources     fs.FS
+	once        sync.Once
+	err         error
 }
 
 // New creates a new vega instance.
@@ -87,6 +88,10 @@ func (vm *Vega) init() error {
 			vm.err = fmt.Errorf("unable to bind vega_render func: %w", err)
 			return
 		}
+		if err := r.ExportTo(r.Get("vega_lite_compile"), &vm.liteCompile); err != nil {
+			vm.err = fmt.Errorf("unable to bind vega_lite_compile func: %w", err)
+			return
+		}
 		if err := r.ExportTo(r.Get("vega_lite_render"), &vm.liteRender); err != nil {
 			vm.err = fmt.Errorf("unable to bind vega_lite_render func: %w", err)
 			return
@@ -104,6 +109,14 @@ func (vm *Vega) Version() (string, string, error) {
 	vegaVer := strings.TrimPrefix(vm.vegaVer(), "v")
 	liteVer := strings.TrimPrefix(vm.liteVer(), "v")
 	return vegaVer, liteVer, nil
+}
+
+// Compile compiles a vega lite specification to a vega specification.
+func (vm *Vega) Compile(spec string) (string, error) {
+	if err := vm.init(); err != nil {
+		return "", err
+	}
+	return vm.liteCompile(spec)
 }
 
 // Render renders the spec with the specified data.

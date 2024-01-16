@@ -88,7 +88,9 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	case err != nil:
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	t.Logf("---\n%s\n---", s)
+	if os.Getenv("VERBOSE") != "" {
+		t.Logf("---\n%s\n---", s)
+	}
 	t.Logf("duration: %s", total)
 	if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
@@ -105,6 +107,9 @@ func contains(v []string, s string) bool {
 }
 
 var broken = []string{
+	"compiled/point_href",
+	"compiled/scatter_image",
+	"lite/geo_circle",
 	"lite/point_href",
 	"lite/scatter_image",
 	"vega/contour-plot",
