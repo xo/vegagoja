@@ -19,8 +19,11 @@ import (
 	"github.com/dop251/goja_nodejs/require"
 )
 
-// renderFunc is the signature for the render function.
-type renderFunc func(logger func([]string), spec string, data interface{}, cb func(string)) string
+// loggerFunc is the signature for the log func.
+type loggerFunc func([]string)
+
+// renderFunc is the signature for the render func.
+type renderFunc func(logger loggerFunc, spec string, data interface{}, cb func(string)) string
 
 // Vega handles rendering Vega visualizations as SVGs.
 //
@@ -32,7 +35,7 @@ type Vega struct {
 	liteVer     func() string
 	vegaRender  renderFunc
 	liteRender  renderFunc
-	liteCompile func(string) (string, error)
+	liteCompile func(loggerFunc, string) (string, error)
 	logger      func(...interface{})
 	sources     fs.FS
 	once        sync.Once
@@ -116,7 +119,7 @@ func (vm *Vega) Compile(spec string) (string, error) {
 	if err := vm.init(); err != nil {
 		return "", err
 	}
-	return vm.liteCompile(spec)
+	return vm.liteCompile(vm.log, spec)
 }
 
 // Render renders the spec with the specified data.
