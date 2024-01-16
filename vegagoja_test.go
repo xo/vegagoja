@@ -13,17 +13,14 @@ import (
 )
 
 func TestVersion(t *testing.T) {
-	clean := func(s string) string {
-		return strings.TrimPrefix(strings.TrimSpace(s), "v")
-	}
 	vegaVer, liteVer, err := New().Version()
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if v, exp := clean(vegaVer), clean(string(vegaVersionTxt)); v != exp {
+	if v, exp := cleanString(vegaVer), cleanString(string(vegaVersionTxt)); v != exp {
 		t.Errorf("expected %s, got: %s", exp, v)
 	}
-	if v, exp := clean(liteVer), clean(string(liteVersionTxt)); v != exp {
+	if v, exp := cleanString(liteVer), cleanString(string(liteVersionTxt)); v != exp {
 		t.Errorf("expected %s, got: %s", exp, v)
 	}
 	t.Logf("vega: %s vega-lite: %s", vegaVer, liteVer)
@@ -95,6 +92,10 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
+}
+
+func cleanString(s string) string {
+	return strings.TrimPrefix(strings.TrimSpace(s), "v")
 }
 
 func contains(v []string, s string) bool {
