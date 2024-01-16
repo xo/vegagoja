@@ -30,7 +30,7 @@ type Vega struct {
 	liteRender  renderFunc
 	liteCompile func(loggerFunc, string) (string, error)
 	logger      func(...interface{})
-	sources     fs.FS
+	source      fs.FS
 	once        sync.Once
 	err         error
 }
@@ -168,8 +168,8 @@ func (vm *Vega) data() interface{} {
 
 // load loads data from sources.
 func (vm *Vega) load(name string) (string, error) {
-	if vm.sources != nil {
-		f, err := vm.sources.Open(name)
+	if vm.source != nil {
+		f, err := vm.source.Open(name)
 		if err != nil {
 			return "", fmt.Errorf("could not open from data %s: %w", name, err)
 		}
@@ -230,13 +230,7 @@ func WithCSVBytes(buf []byte) Option {
 // which to load data.
 func WithSources(sources ...fs.FS) Option {
 	return func(vm *Vega) {
-		if len(sources) == 1 {
-			vm.sources = sources[0]
-		} else {
-			vm.sources = &fallbackFS{
-				sources: sources,
-			}
-		}
+		vm.source = NewSource(sources...)
 	}
 }
 
@@ -245,35 +239,24 @@ func WithSources(sources ...fs.FS) Option {
 // ([fs.FS]) can be provided that will take priority when loading data.
 func WithDemoData(sources ...fs.FS) Option {
 	return func(vm *Vega) {
-		vm.sources = &fallbackFS{
-			sources: append(sources, vegaData),
-		}
+		vm.source = NewSource(append(sources, vegaData)...)
 	}
 }
 
-// ResultSet is the shared interface for a result set.
-type ResultSet interface {
-	Next() bool
-	Scan(...interface{}) error
-	Columns() ([]string, error)
-	Close() error
-	Err() error
-	NextResultSet() bool
-}
-
-// fallbackFS is a fallback [fs.FS] implementation.
-type fallbackFS struct {
-	sources []fs.FS
-}
-
-// Open satisfies the [fs.FS] interface.
-func (f *fallbackFS) Open(name string) (fs.File, error) {
-	for _, source := range f.sources {
-		if file, err := source.Open(name); err == nil {
-			return file, nil
-		}
+// WithDataDir is a vega option to add a data source that loads data from a
+// directory.
+func WithDataDir(dir string) Option {
+	return func(vm *Vega) {
+		vm.source = os.DirFS(dir)
 	}
-	return nil, os.ErrNotExist
+}
+
+// WithPrefixedSourceDir is a vega option to add a data source that loads data
+// from a specified prefixed directory name.
+func WithPrefixedSourceDir(prefix, dir string) Option {
+	return func(vm *Vega) {
+		vm.source = NewPrefixedSourceDir(prefix, dir)
+	}
 }
 
 // decodeSchema decodes the schema from the spec.

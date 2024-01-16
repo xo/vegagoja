@@ -1,5 +1,6 @@
-*.svg
-*.js
+/candlestick.svg
+/layer-line.svg
+
 *.png
 *.jpg
 *.txt

@@ -1,3 +1,5 @@
+Date.prototype.setYear = Date.prototype.setFullYear;
+
 function logger(logf) {
   return {
     level(_) {},
@@ -27,13 +29,9 @@ function vega_lite_version() {
 function vega_render(logf, spec, loadf, cb) {
   const loader = {
     load(name, res) {
-      if (res.response != "json" && res.response != "text") {
-        logf(["HERERERR", res.response]);
-      }
-      //logf(["name", name, "res", JSON.stringify(res)]);
       var s = "";
       try {
-        s = loadf(name);
+        s = loadf(name, res.response);
       } catch (e) {
         logf(["LOAD ERROR", e]);
       }

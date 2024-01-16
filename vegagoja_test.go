@@ -71,10 +71,14 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	vm := New(
+	opts := []Option{
 		WithLogger(t.Log),
 		WithDemoData(),
-	)
+	}
+	if strings.HasPrefix(testName, "deneb/") {
+		opts = append(opts, WithPrefixedSourceDir("deneb/", "testdata/deneb"))
+	}
+	vm := New(opts...)
 	start := time.Now()
 	s, err := vm.Render(ctx, string(spec))
 	total := time.Now().Sub(start)
