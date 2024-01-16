@@ -12,7 +12,7 @@
     },
     {
       "name": "source_0",
-      "url": "https://cdn.jsdelivr.net/npm/vega-datasets@v1.29.0/data/cars.json",
+      "url": "data/cars.json",
       "format": {"type": "json"},
       "transform": [
         {"type": "identifier", "as": "_vgsid_"},
