@@ -89,8 +89,10 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 		t.Logf("---\n%s\n---", s)
 	}
 	t.Logf("duration: %s", total)
-	if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+	if s = strings.TrimSpace(s); len(s) != 0 {
+		if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
 	}
 }
 
