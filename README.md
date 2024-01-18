@@ -1,8 +1,8 @@
 # vegagoja
 
-`vegagoja` renders [Vega visualizations][vega-examples] and [Vega-lite
-visualizations][vega-lite-examples] as SVGs using the [`goja`][goja] JavaScript
-runtime. Developed for use by [`usql`][usql] for rendering charts.
+`vegagoja` renders [Vega][vega-examples] and [Vega-Lite visualizations][vega-lite-examples]
+as SVGs using the [`goja`][goja] JavaScript runtime. Developed for use by
+[`usql`][usql] for rendering charts.
 
 [Overview][] | [TODO][] | [About][]
 
@@ -116,7 +116,7 @@ const candlestickSpec = `{
 - [usql][usql] - a universal command-line interface for SQL databases
 
 Users of this package may find the [`github.com/xo/resvg`][resvg] package
-helpful in rendering the
+helpful in rendering generated SVGs.
 
 [usql]: https://github.com/xo/usql
 [resvg]: https://github.com/xo/resvg

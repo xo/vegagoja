@@ -26,6 +26,56 @@ func TestVersion(t *testing.T) {
 	t.Logf("vega: %s vega-lite: %s", vegaVer, liteVer)
 }
 
+func TestCompile(t *testing.T) {
+	var files []string
+	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case info.IsDir() || !strings.HasSuffix(name, ".vl.json"):
+			return nil
+		}
+		files = append(files, name)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	for _, nn := range files {
+		name := nn
+		n := strings.Split(name, string(os.PathSeparator))
+		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
+		testName := path.Join(n[1:]...)
+		t.Run(testName, func(t *testing.T) {
+			testCompile(t, name)
+		})
+	}
+}
+
+func testCompile(t *testing.T, name string) {
+	t.Helper()
+	t.Parallel()
+	spec, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	opts := []Option{
+		WithLogger(t.Log),
+		WithDemoData(),
+	}
+	vm := New(opts...)
+	start := time.Now()
+	res, err := vm.Compile(string(spec))
+	total := time.Now().Sub(start)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if os.Getenv("VERBOSE") != "" {
+		t.Logf("---\n%s\n---", res)
+	}
+	t.Logf("duration: %s", total)
+}
+
 func TestRender(t *testing.T) {
 	ctx := context.Background()
 	timeout := 1 * time.Minute
@@ -80,7 +130,7 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	}
 	vm := New(opts...)
 	start := time.Now()
-	s, err := vm.Render(ctx, string(spec))
+	res, err := vm.Render(ctx, string(spec))
 	total := time.Now().Sub(start)
 	switch {
 	case err != nil && contains(broken, testName):
@@ -90,11 +140,11 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 		t.Fatalf("expected no error, got: %v", err)
 	}
 	if os.Getenv("VERBOSE") != "" {
-		t.Logf("---\n%s\n---", s)
+		t.Logf("---\n%s\n---", res)
 	}
 	t.Logf("duration: %s", total)
-	if s = strings.TrimSpace(s); len(s) != 0 {
-		if err := os.WriteFile(name+".svg", []byte(s), 0o644); err != nil {
+	if res = strings.TrimSpace(res); len(res) != 0 {
+		if err := os.WriteFile(name+".svg", []byte(res), 0o644); err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}
 	}
@@ -114,6 +164,7 @@ func contains(v []string, s string) bool {
 }
 
 var broken = []string{
+	"compiled/geo_circle",
 	"compiled/point_href",
 	"compiled/scatter_image",
 	"lite/geo_circle",

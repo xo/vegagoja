@@ -18,16 +18,8 @@ function logger(logf) {
   };
 }
 
-function vega_version() {
-  return vega.version;
-}
-
-function vega_lite_version() {
-  return vegaLite.version;
-}
-
-function vega_render(logf, spec, loadf, cb) {
-  const loader = {
+function loader(logf, loadf) {
+  return {
     load(name, res) {
       var s = "";
       try {
@@ -38,28 +30,35 @@ function vega_render(logf, spec, loadf, cb) {
       return s;
     },
   };
+}
+
+function parse(spec) {
+  if (typeof spec == "object") {
+    return spec;
+  }
+  return JSON.parse(spec);
+}
+
+function vega_version() {
+  return vega.version;
+}
+
+function lite_version() {
+  return vegaLite.version;
+}
+
+function render(logf, spec, loadf, cb, errcb) {
   try {
-    var s = {};
-    switch (typeof spec) {
-      case "object":
-        s = spec;
-        break;
-      case "string":
-        s = JSON.parse(spec);
-        break;
-      default:
-        throw Error("invalid type " + typeof spec);
-    }
-    var runtime = vega.parse(s);
+    var runtime = vega.parse(parse(spec));
     var view = new vega.View(runtime, {
-      loader: loader,
-      logger: logger(logf),
       logLevel: vega.Debug,
+      logger: logger(logf),
+      loader: loader(logf, loadf),
     });
     view.toSVG().then(cb);
   } catch (e) {
     logf(["RENDER ERROR", e]);
-    throw e;
+    errcb(e);
   } finally {
     if (view) {
       view.finalize();
@@ -67,22 +66,15 @@ function vega_render(logf, spec, loadf, cb) {
   }
 }
 
-function vega_lite_compile(logf, spec) {
-  const s = vegaLite.compile(JSON.parse(spec), {
-    logger: logger(logf),
-  }).spec;
-  return JSON.stringify(s, null, 2);
-}
-
-function vega_lite_render(logf, spec, loadf, cb) {
-  var s = "";
+function compile(logf, spec) {
+  var res = {};
   try {
-    s = vegaLite.compile(JSON.parse(spec), {
+    res = vegaLite.compile(parse(spec), {
       logger: logger(logf),
-    }).spec;
+    });
   } catch (e) {
     logf(["COMPILE ERROR", e]);
     throw e;
   }
-  return vega_render(logf, s, loadf, cb);
+  return JSON.stringify(res);
 }

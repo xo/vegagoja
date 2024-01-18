@@ -1,4 +1,11 @@
-// Package vegagoja renders Vega and Vega Lite visualizations as SVGs.
+// Package vegagoja renders [Vega] and [Vega-Lite] visualizations as SVGs using
+// the [goja] JavaScript runtime. Developed for use by [usql] for rendering
+// charts.
+//
+// [Vega]: https://vega.github.io/vega/examples/
+// [Vega-Lite]: https://vega.github.io/vega-lite/examples/
+// [goja]: https://github.com/dop251/goja
+// [usql]: https://github.com/xo/usql
 package vegagoja
 
 import (
@@ -6,6 +13,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,20 +27,22 @@ import (
 	"github.com/dop251/goja_nodejs/require"
 )
 
-// Vega handles rendering Vega and Vega Lite visualizations as SVGs. Wraps a
-// goja runtime vm, and uses embedded javascript to render Vega and Vega Lite
-// visualizations.
+// Vega handles rendering [Vega] and [Vega-Lite] visualizations as SVGs,
+// wrapping a [goja] runtime vm.
+//
+// [Vega]: https://vega.github.io/vega/examples/
+// [Vega-Lite]: https://vega.github.io/vega-lite/examples/
+// [goja]: https://github.com/dop251/goja
 type Vega struct {
-	r           *goja.Runtime
-	vegaVer     func() string
-	liteVer     func() string
-	vegaRender  renderFunc
-	liteRender  renderFunc
-	liteCompile func(loggerFunc, string) (string, error)
-	logger      func(...interface{})
-	source      fs.FS
-	once        sync.Once
-	err         error
+	r       *goja.Runtime
+	vegaVer func() string
+	liteVer func() string
+	render  renderFunc
+	compile compileFunc
+	logger  func(...interface{})
+	source  fs.FS
+	once    sync.Once
+	err     error
 }
 
 // New creates a new vega instance.
@@ -68,7 +78,7 @@ func (vm *Vega) init() error {
 				return
 			}
 			if _, err := r.RunProgram(p); err != nil {
-				vm.err = fmt.Errorf("unable to load %s: %w", name, err)
+				vm.err = fmt.Errorf("unable to run %s: %w", name, err)
 				return
 			}
 		}
@@ -76,20 +86,16 @@ func (vm *Vega) init() error {
 			vm.err = fmt.Errorf("unable to bind vega_version func: %w", err)
 			return
 		}
-		if err := r.ExportTo(r.Get("vega_lite_version"), &vm.liteVer); err != nil {
-			vm.err = fmt.Errorf("unable to bind vega_lite_version func: %w", err)
+		if err := r.ExportTo(r.Get("lite_version"), &vm.liteVer); err != nil {
+			vm.err = fmt.Errorf("unable to bind lite_version func: %w", err)
 			return
 		}
-		if err := r.ExportTo(r.Get("vega_render"), &vm.vegaRender); err != nil {
-			vm.err = fmt.Errorf("unable to bind vega_render func: %w", err)
+		if err := r.ExportTo(r.Get("render"), &vm.render); err != nil {
+			vm.err = fmt.Errorf("unable to bind render func: %w", err)
 			return
 		}
-		if err := r.ExportTo(r.Get("vega_lite_compile"), &vm.liteCompile); err != nil {
-			vm.err = fmt.Errorf("unable to bind vega_lite_compile func: %w", err)
-			return
-		}
-		if err := r.ExportTo(r.Get("vega_lite_render"), &vm.liteRender); err != nil {
-			vm.err = fmt.Errorf("unable to bind vega_lite_render func: %w", err)
+		if err := r.ExportTo(r.Get("compile"), &vm.compile); err != nil {
+			vm.err = fmt.Errorf("unable to bind compile func: %w", err)
 			return
 		}
 		vm.r = r
@@ -107,16 +113,75 @@ func (vm *Vega) Version() (string, string, error) {
 	return vegaVer, liteVer, nil
 }
 
-// Compile compiles a vega lite specification to a vega specification.
-func (vm *Vega) Compile(spec string) (string, error) {
+// CompileSpec compiles a vega-lite specification to a vega specification,
+// returning the entire raw compiled json containing the "spec" and
+// "normalized" fields.
+func (vm *Vega) CompileSpec(spec string) (string, error) {
 	if err := vm.init(); err != nil {
 		return "", err
 	}
-	return vm.liteCompile(vm.log, spec)
+	return vm.compile(vm.log, spec)
 }
 
-// Render renders the spec with the specified data.
+// Compile compiles a vega-lite specification to a vega specification.
+//
+// Wraps [CompileSpec], returning only the compiled "spec".
+func (vm *Vega) Compile(spec string) (string, error) {
+	spec, err := vm.CompileSpec(spec)
+	if err != nil {
+		return "", err
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(spec), &res); err != nil {
+		return "", ErrInvalidCompiledSpec
+	}
+	s, ok := res["spec"]
+	if !ok {
+		return "", ErrInvalidCompiledSpec
+	}
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// Render renders a vega visualization spec as a SVG.
 func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error) {
+	if spec == "" {
+		return
+	}
+	// unmarshal
+	var m map[string]interface{}
+	if err = json.Unmarshal([]byte(spec), &m); err != nil {
+		err = ErrInvalidJSON
+		return
+	}
+	// check schema
+	s, ok := m["$schema"]
+	if !ok {
+		err = ErrMissingSchema
+		return
+	}
+	schema, ok := s.(string)
+	switch {
+	case !ok:
+		err = ErrSchemaInvalid
+		return
+	case !strings.HasPrefix(schema, "https://vega.github.io/schema/vega"):
+		err = ErrNotVegaOrVegaLiteSchema
+		return
+	}
+	// convert vega-lite -> vega
+	if strings.HasPrefix(schema, "https://vega.github.io/schema/vega-lite/") {
+		if spec, err = vm.Compile(spec); err != nil {
+			err = fmt.Errorf("unable to compile vega-lite spec: %w", err)
+			return
+		}
+	}
+	// init
 	if err = vm.init(); err != nil {
 		return
 	}
@@ -129,22 +194,23 @@ func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error)
 			}
 		}
 	}()
-	f := vm.vegaRender
-	switch s, ok := decodeSchema(spec); {
-	case !ok:
-		err = fmt.Errorf("spec does not contain or has invalid $schema definition")
-		return
-	case strings.Contains(s, "vega-lite"):
-		f = vm.liteRender
-	}
-	ch := make(chan struct{})
-	f(vm.log, spec, vm.data(), func(s string) {
+	ch, errch := make(chan struct{}, 1), make(chan error, 1)
+	err = vm.render(vm.log, spec, vm.data(), func(s string) {
 		defer close(ch)
+		defer close(errch)
 		res = s
+	}, func(e string) {
+		defer close(ch)
+		defer close(errch)
+		errch <- errors.New(e)
 	})
+	if err != nil {
+		return
+	}
 	select {
 	case <-ctx.Done():
 		err = ctx.Err()
+	case err = <-errch:
 	case <-ch:
 	}
 	return
@@ -161,7 +227,7 @@ func (vm *Vega) log(s []string) {
 	}
 }
 
-// data returns the
+// data returns the data.
 func (vm *Vega) data() interface{} {
 	return vm.load
 }
@@ -259,35 +325,36 @@ func WithPrefixedSourceDir(prefix, dir string) Option {
 	}
 }
 
-// decodeSchema decodes the schema from the spec.
-func decodeSchema(spec string) (string, bool) {
-	// check $schema definition
-	var m map[string]interface{}
-	if err := json.NewDecoder(strings.NewReader(spec)).Decode(&m); err != nil {
-		return "", false
-	}
-	s, ok := m["$schema"]
-	if !ok {
-		return "", false
-	}
-	schema, ok := s.(string)
-	if !ok {
-		return "", false
-	}
-	return schema, strings.HasPrefix(schema, vegaSchemaPrefix) || strings.HasPrefix(schema, liteSchemaPrefix)
+// Error is a error.
+type Error string
+
+// Errors.
+const (
+	// ErrInvalidCompiledSpec is the invalid compiled spec error.
+	ErrInvalidCompiledSpec Error = "invalid compiled spec"
+	// ErrInvalidJSON is the invalid json error.
+	ErrInvalidJSON Error = "invalid json"
+	// ErrMissingSchema is the missing $schema error.
+	ErrMissingSchema Error = "missing $schema"
+	// ErrSchemaInvalid is the $schema invalid error.
+	ErrSchemaInvalid Error = "$schema invalid"
+	// ErrNotVegaOrVegaLiteSchema is the not vega or vega-lite schema error.
+	ErrNotVegaOrVegaLiteSchema Error = "not vega or vega-lite schema"
+)
+
+// Error satisfies the [error] interface.
+func (err Error) Error() string {
+	return string(err)
 }
 
 // loggerFunc is the signature for the log func.
 type loggerFunc func([]string)
 
 // renderFunc is the signature for the render func.
-type renderFunc func(logger loggerFunc, spec string, data interface{}, cb func(string)) string
+type renderFunc func(logf loggerFunc, spec string, data interface{}, cb, errcb func(string)) error
 
-// vega schema prefixes.
-const (
-	vegaSchemaPrefix = "https://vega.github.io/schema/vega/"
-	liteSchemaPrefix = "https://vega.github.io/schema/vega-lite/"
-)
+// compileFunc is the signature for the compile func.
+type compileFunc func(logf loggerFunc, spec string) (string, error)
 
 // vegaVersionTxt is the embedded vega-version.txt.
 //

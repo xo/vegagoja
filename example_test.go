@@ -13,11 +13,11 @@ func Example() {
 	vega := vegagoja.New(
 		vegagoja.WithDemoData(),
 	)
-	data, err := vega.Render(context.Background(), candlestickSpec)
+	svg, err := vega.Render(context.Background(), candlestickSpec)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile("candestick.svg", []byte(data), 0o644); err != nil {
+	if err := os.WriteFile("candlestick.svg", []byte(svg), 0o644); err != nil {
 		log.Fatal(err)
 	}
 	// Output:
@@ -25,271 +25,30 @@ func Example() {
 
 func Example_compile() {
 	vega := vegagoja.New()
-	s, err := vega.Compile(candlestickSpec)
+	res, err := vega.Compile(candlestickSpec)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(s)
+	fmt.Println(res)
 	// Output:
-	// {
-	//   "$schema": "https://vega.github.io/schema/vega/v5.json",
-	//   "description": "A candlestick chart inspired by an example in Protovis (http://mbostock.github.io/protovis/ex/candlestick.html)",
-	//   "background": "white",
-	//   "padding": 5,
-	//   "width": 400,
-	//   "height": 200,
-	//   "style": "cell",
-	//   "data": [
-	//     {
-	//       "name": "source_0",
-	//       "url": "data/ohlc.json",
-	//       "format": {
-	//         "type": "json",
-	//         "parse": {
-	//           "date": "date"
-	//         }
-	//       }
-	//     },
-	//     {
-	//       "name": "data_0",
-	//       "source": "source_0",
-	//       "transform": [
-	//         {
-	//           "type": "filter",
-	//           "expr": "(isDate(datum[\"date\"]) || (isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]))) && isValid(datum[\"low\"]) && isFinite(+datum[\"low\"])"
-	//         }
-	//       ]
-	//     },
-	//     {
-	//       "name": "data_1",
-	//       "source": "source_0",
-	//       "transform": [
-	//         {
-	//           "type": "filter",
-	//           "expr": "(isDate(datum[\"date\"]) || (isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]))) && isValid(datum[\"open\"]) && isFinite(+datum[\"open\"])"
-	//         }
-	//       ]
-	//     }
-	//   ],
-	//   "marks": [
-	//     {
-	//       "name": "layer_0_marks",
-	//       "type": "rule",
-	//       "style": [
-	//         "rule"
-	//       ],
-	//       "from": {
-	//         "data": "data_0"
-	//       },
-	//       "encode": {
-	//         "update": {
-	//           "stroke": [
-	//             {
-	//               "test": "datum.open < datum.close",
-	//               "value": "#06982d"
-	//             },
-	//             {
-	//               "value": "#ae1325"
-	//             }
-	//           ],
-	//           "description": {
-	//             "signal": "\"Date in 2009: \" + (timeFormat(datum[\"date\"], '%m/%d')) + \"; low: \" + (format(datum[\"low\"], \"\")) + \"; high: \" + (format(datum[\"high\"], \"\"))"
-	//           },
-	//           "x": {
-	//             "scale": "x",
-	//             "field": "date"
-	//           },
-	//           "y": {
-	//             "scale": "y",
-	//             "field": "low"
-	//           },
-	//           "y2": {
-	//             "scale": "y",
-	//             "field": "high"
-	//           }
-	//         }
-	//       }
-	//     },
-	//     {
-	//       "name": "layer_1_marks",
-	//       "type": "rect",
-	//       "style": [
-	//         "bar"
-	//       ],
-	//       "from": {
-	//         "data": "data_1"
-	//       },
-	//       "encode": {
-	//         "update": {
-	//           "fill": [
-	//             {
-	//               "test": "datum.open < datum.close",
-	//               "value": "#06982d"
-	//             },
-	//             {
-	//               "value": "#ae1325"
-	//             }
-	//           ],
-	//           "ariaRoleDescription": {
-	//             "value": "bar"
-	//           },
-	//           "description": {
-	//             "signal": "\"Date in 2009: \" + (timeFormat(datum[\"date\"], '%m/%d')) + \"; open: \" + (format(datum[\"open\"], \"\")) + \"; close: \" + (format(datum[\"close\"], \"\"))"
-	//           },
-	//           "xc": {
-	//             "scale": "x",
-	//             "field": "date"
-	//           },
-	//           "width": {
-	//             "value": 5
-	//           },
-	//           "y": {
-	//             "scale": "y",
-	//             "field": "open"
-	//           },
-	//           "y2": {
-	//             "scale": "y",
-	//             "field": "close"
-	//           }
-	//         }
-	//       }
-	//     }
-	//   ],
-	//   "scales": [
-	//     {
-	//       "name": "x",
-	//       "type": "time",
-	//       "domain": {
-	//         "fields": [
-	//           {
-	//             "data": "data_0",
-	//             "field": "date"
-	//           },
-	//           {
-	//             "data": "data_1",
-	//             "field": "date"
-	//           }
-	//         ]
-	//       },
-	//       "range": [
-	//         0,
-	//         {
-	//           "signal": "width"
-	//         }
-	//       ],
-	//       "padding": 5
-	//     },
-	//     {
-	//       "name": "y",
-	//       "type": "linear",
-	//       "domain": {
-	//         "fields": [
-	//           {
-	//             "data": "data_0",
-	//             "field": "low"
-	//           },
-	//           {
-	//             "data": "data_0",
-	//             "field": "high"
-	//           },
-	//           {
-	//             "data": "data_1",
-	//             "field": "open"
-	//           },
-	//           {
-	//             "data": "data_1",
-	//             "field": "close"
-	//           }
-	//         ]
-	//       },
-	//       "range": [
-	//         {
-	//           "signal": "height"
-	//         },
-	//         0
-	//       ],
-	//       "zero": false,
-	//       "nice": true
-	//     }
-	//   ],
-	//   "axes": [
-	//     {
-	//       "scale": "x",
-	//       "orient": "bottom",
-	//       "gridScale": "y",
-	//       "grid": true,
-	//       "tickCount": {
-	//         "signal": "ceil(width/40)"
-	//       },
-	//       "domain": false,
-	//       "labels": false,
-	//       "aria": false,
-	//       "maxExtent": 0,
-	//       "minExtent": 0,
-	//       "ticks": false,
-	//       "zindex": 0
-	//     },
-	//     {
-	//       "scale": "y",
-	//       "orient": "left",
-	//       "gridScale": "x",
-	//       "grid": true,
-	//       "tickCount": {
-	//         "signal": "ceil(height/40)"
-	//       },
-	//       "domain": false,
-	//       "labels": false,
-	//       "aria": false,
-	//       "maxExtent": 0,
-	//       "minExtent": 0,
-	//       "ticks": false,
-	//       "zindex": 0
-	//     },
-	//     {
-	//       "scale": "x",
-	//       "orient": "bottom",
-	//       "grid": false,
-	//       "title": "Date in 2009",
-	//       "format": "%m/%d",
-	//       "labelAngle": 315,
-	//       "labelAlign": "right",
-	//       "labelBaseline": "top",
-	//       "labelFlush": true,
-	//       "labelOverlap": true,
-	//       "tickCount": {
-	//         "signal": "ceil(width/40)"
-	//       },
-	//       "zindex": 0
-	//     },
-	//     {
-	//       "scale": "y",
-	//       "orient": "left",
-	//       "grid": false,
-	//       "title": "Price",
-	//       "labelOverlap": true,
-	//       "tickCount": {
-	//         "signal": "ceil(height/40)"
-	//       },
-	//       "zindex": 0
-	//     }
-	//   ]
-	// }
+	// {"$schema":"https://vega.github.io/schema/vega/v5.json","axes":[{"aria":false,"domain":false,"grid":true,"gridScale":"y","labels":false,"maxExtent":0,"minExtent":0,"orient":"bottom","scale":"x","tickCount":{"signal":"ceil(width/40)"},"ticks":false,"zindex":0},{"aria":false,"domain":false,"grid":true,"gridScale":"x","labels":false,"maxExtent":0,"minExtent":0,"orient":"left","scale":"y","tickCount":{"signal":"ceil(height/40)"},"ticks":false,"zindex":0},{"format":"%m/%d","grid":false,"labelAlign":"right","labelAngle":315,"labelBaseline":"top","labelFlush":true,"labelOverlap":true,"orient":"bottom","scale":"x","tickCount":{"signal":"ceil(width/40)"},"title":"Date in 2009","zindex":0},{"grid":false,"labelOverlap":true,"orient":"left","scale":"y","tickCount":{"signal":"ceil(height/40)"},"title":"Price","zindex":0}],"background":"white","data":[{"format":{"parse":{"date":"date"},"type":"json"},"name":"source_0","url":"data/ohlc.json"},{"name":"data_0","source":"source_0","transform":[{"expr":"(isDate(datum[\"date\"]) || (isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]))) && isValid(datum[\"low\"]) && isFinite(+datum[\"low\"])","type":"filter"}]},{"name":"data_1","source":"source_0","transform":[{"expr":"(isDate(datum[\"date\"]) || (isValid(datum[\"date\"]) && isFinite(+datum[\"date\"]))) && isValid(datum[\"open\"]) && isFinite(+datum[\"open\"])","type":"filter"}]}],"description":"A candlestick chart inspired by an example in Protovis (http://mbostock.github.io/protovis/ex/candlestick.html)","height":200,"marks":[{"encode":{"update":{"description":{"signal":"\"Date in 2009: \" + (timeFormat(datum[\"date\"], '%m/%d')) + \"; low: \" + (format(datum[\"low\"], \"\")) + \"; high: \" + (format(datum[\"high\"], \"\"))"},"stroke":[{"test":"datum.open < datum.close","value":"#06982d"},{"value":"#ae1325"}],"x":{"field":"date","scale":"x"},"y":{"field":"low","scale":"y"},"y2":{"field":"high","scale":"y"}}},"from":{"data":"data_0"},"name":"layer_0_marks","style":["rule"],"type":"rule"},{"encode":{"update":{"ariaRoleDescription":{"value":"bar"},"description":{"signal":"\"Date in 2009: \" + (timeFormat(datum[\"date\"], '%m/%d')) + \"; open: \" + (format(datum[\"open\"], \"\")) + \"; close: \" + (format(datum[\"close\"], \"\"))"},"fill":[{"test":"datum.open < datum.close","value":"#06982d"},{"value":"#ae1325"}],"width":{"value":5},"xc":{"field":"date","scale":"x"},"y":{"field":"open","scale":"y"},"y2":{"field":"close","scale":"y"}}},"from":{"data":"data_1"},"name":"layer_1_marks","style":["bar"],"type":"rect"}],"padding":5,"scales":[{"domain":{"fields":[{"data":"data_0","field":"date"},{"data":"data_1","field":"date"}]},"name":"x","padding":5,"range":[0,{"signal":"width"}],"type":"time"},{"domain":{"fields":[{"data":"data_0","field":"low"},{"data":"data_0","field":"high"},{"data":"data_1","field":"open"},{"data":"data_1","field":"close"}]},"name":"y","nice":true,"range":[{"signal":"height"},0],"type":"linear","zero":false}],"style":"cell","width":400}
 }
 
 func Example_withCSV() {
 	vega := vegagoja.New(
 		vegagoja.WithCSVString(co2Data),
 	)
-	data, err := vega.Render(context.Background(), layerLineSpec)
+	svg, err := vega.Render(context.Background(), layerLineSpec)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile("layer-line.svg", []byte(data), 0o644); err != nil {
+	if err := os.WriteFile("layer-line.svg", []byte(svg), 0o644); err != nil {
 		log.Fatal(err)
 	}
 	// Output:
 }
 
+// candlestickSpec is the same as testdata/lite/layer_candlestick.vl.json
 const candlestickSpec = `{
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
   "width": 400,
@@ -337,248 +96,72 @@ const candlestickSpec = `{
   ]
 }`
 
+// layerLineSpec is same as testdata/lite/layer_line_co2_concentration.vl.json
 const layerLineSpec = `{
-  "$schema": "https://vega.github.io/schema/vega/v5.json",
-  "background": "white",
-  "padding": 5,
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "data": {
+    "url": "data/co2-concentration.csv",
+    "format": {"parse": {"Date": "utc:'%Y-%m-%d'"}}
+  },
   "width": 800,
   "height": 500,
-  "style": "cell",
-  "data": [
+  "transform": [
+    {"calculate": "year(datum.Date)", "as": "year"},
+    {"calculate": "floor(datum.year / 10)", "as": "decade"},
     {
-      "name": "source_0",
-      "url": "data/co2-concentration.csv",
-      "format": {"type": "csv", "parse": {"Date": "utc:'%Y-%m-%d'"}},
-      "transform": [
-        {"type": "formula", "expr": "year(datum.Date)", "as": "year"},
-        {"type": "formula", "expr": "floor(datum.year / 10)", "as": "decade"},
-        {
-          "type": "formula",
-          "expr": "(datum.year % 10) + (month(datum.Date)/12)",
-          "as": "scaled_date"
-        },
-        {
-          "type": "formula",
-          "expr": "datum.first_date === datum.scaled_date ? 'first' : datum.last_date === datum.scaled_date ? 'last' : null",
-          "as": "end"
-        }
-      ]
+      "calculate": "(datum.year % 10) + (month(datum.Date)/12)",
+      "as": "scaled_date"
     },
     {
-      "name": "data_0",
-      "source": "source_0",
-      "transform": [
-        {
-          "type": "aggregate",
-          "groupby": ["decade"],
-          "ops": ["max", "argmax", "min", "argmin"],
-          "fields": [
-            "scaled_date",
-            "scaled_date",
-            "scaled_date",
-            "scaled_date"
-          ],
-          "as": [
-            "max_scaled_date",
-            "argmax_scaled_date",
-            "min_scaled_date",
-            "argmin_scaled_date"
-          ]
-        }
-      ]
-    },
-    {
-      "name": "data_1",
-      "source": "data_0",
-      "transform": [
-        {
-          "type": "filter",
-          "expr": "isValid(datum[\"max_scaled_date\"]) && isFinite(+datum[\"max_scaled_date\"]) && isValid(datum[\"argmax_scaled_date\"][\"CO2\"]) && isFinite(+datum[\"argmax_scaled_date\"][\"CO2\"])"
-        }
-      ]
-    },
-    {
-      "name": "data_2",
-      "source": "data_0",
-      "transform": [
-        {
-          "type": "filter",
-          "expr": "isValid(datum[\"min_scaled_date\"]) && isFinite(+datum[\"min_scaled_date\"]) && isValid(datum[\"argmin_scaled_date\"][\"CO2\"]) && isFinite(+datum[\"argmin_scaled_date\"][\"CO2\"])"
-        }
-      ]
+      "calculate": "datum.first_date === datum.scaled_date ? 'first' : datum.last_date === datum.scaled_date ? 'last' : null",
+      "as": "end"
     }
   ],
-  "marks": [
-    {
-      "name": "layer_0_pathgroup",
-      "type": "group",
-      "from": {
-        "facet": {
-          "name": "faceted_path_layer_0_main",
-          "data": "source_0",
-          "groupby": ["decade"]
-        }
-      },
-      "encode": {
-        "update": {
-          "width": {"field": {"group": "width"}},
-          "height": {"field": {"group": "height"}}
-        }
-      },
-      "marks": [
-        {
-          "name": "layer_0_marks",
-          "type": "line",
-          "style": ["line"],
-          "sort": {"field": "datum[\"scaled_date\"]"},
-          "from": {"data": "faceted_path_layer_0_main"},
-          "encode": {
-            "update": {
-              "stroke": {"scale": "color", "field": "decade"},
-              "description": {
-                "signal": "\"Year into Decade: \" + (format(datum[\"scaled_date\"], \"\")) + \"; CO2 concentration in ppm: \" + (format(datum[\"CO2\"], \"\")) + \"; decade: \" + (isValid(datum[\"decade\"]) ? datum[\"decade\"] : \"\"+datum[\"decade\"])"
-              },
-              "x": {"scale": "x", "field": "scaled_date"},
-              "y": {"scale": "y", "field": "CO2"},
-              "defined": {
-                "signal": "isValid(datum[\"scaled_date\"]) && isFinite(+datum[\"scaled_date\"]) && isValid(datum[\"CO2\"]) && isFinite(+datum[\"CO2\"])"
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "layer_1_marks",
-      "type": "text",
-      "style": ["text"],
-      "aria": false,
-      "from": {"data": "data_2"},
-      "encode": {
-        "update": {
-          "baseline": {"value": "top"},
-          "fill": {"scale": "color", "field": "decade"},
-          "x": {"scale": "x", "field": "min_scaled_date"},
-          "y": {"scale": "y", "field": "argmin_scaled_date[\"CO2\"]"},
-          "text": {
-            "signal": "isValid(datum[\"argmin_scaled_date\"][\"year\"]) ? datum[\"argmin_scaled_date\"][\"year\"] : \"\"+datum[\"argmin_scaled_date\"][\"year\"]"
-          }
-        }
-      }
-    },
-    {
-      "name": "layer_2_marks",
-      "type": "text",
-      "style": ["text"],
-      "aria": false,
-      "from": {"data": "data_1"},
-      "encode": {
-        "update": {
-          "fill": {"scale": "color", "field": "decade"},
-          "x": {"scale": "x", "field": "max_scaled_date"},
-          "y": {"scale": "y", "field": "argmax_scaled_date[\"CO2\"]"},
-          "text": {
-            "signal": "isValid(datum[\"argmax_scaled_date\"][\"year\"]) ? datum[\"argmax_scaled_date\"][\"year\"] : \"\"+datum[\"argmax_scaled_date\"][\"year\"]"
-          },
-          "baseline": {"value": "middle"}
-        }
-      }
-    }
-  ],
-  "scales": [
-    {
-      "name": "x",
-      "type": "linear",
-      "domain": {
-        "fields": [
-          {"data": "source_0", "field": "scaled_date"},
-          {"data": "data_2", "field": "min_scaled_date"},
-          {"data": "data_1", "field": "max_scaled_date"}
-        ]
-      },
-      "range": [0, {"signal": "width"}],
-      "nice": true,
-      "zero": false
-    },
-    {
-      "name": "y",
-      "type": "linear",
-      "domain": {
-        "fields": [
-          {"data": "source_0", "field": "CO2"},
-          {"data": "data_2", "field": "argmin_scaled_date[\"CO2\"]"},
-          {"data": "data_1", "field": "argmax_scaled_date[\"CO2\"]"}
-        ]
-      },
-      "range": [{"signal": "height"}, 0],
-      "zero": false,
-      "nice": true
-    },
-    {
-      "name": "color",
-      "type": "ordinal",
-      "domain": {
-        "fields": [
-          {"data": "source_0", "field": "decade"},
-          {"data": "data_2", "field": "decade"},
-          {"data": "data_1", "field": "decade"}
-        ],
-        "sort": true
-      },
-      "range": {"scheme": "magma"},
-      "interpolate": "hcl"
-    }
-  ],
-  "axes": [
-    {
-      "scale": "x",
-      "orient": "bottom",
-      "tickCount": 11,
-      "gridScale": "y",
-      "grid": true,
-      "domain": false,
-      "labels": false,
-      "aria": false,
-      "maxExtent": 0,
-      "minExtent": 0,
-      "ticks": false,
-      "zindex": 0
-    },
-    {
-      "scale": "y",
-      "orient": "left",
-      "gridScale": "x",
-      "grid": true,
-      "tickCount": {"signal": "ceil(height/40)"},
-      "domain": false,
-      "labels": false,
-      "aria": false,
-      "maxExtent": 0,
-      "minExtent": 0,
-      "ticks": false,
-      "zindex": 0
-    },
-    {
-      "scale": "x",
-      "orient": "bottom",
-      "grid": false,
+  "encoding": {
+    "x": {
+      "type": "quantitative",
       "title": "Year into Decade",
-      "tickCount": 11,
-      "labelFlush": true,
-      "labelOverlap": true,
-      "zindex": 0
+      "axis": {"tickCount": 11}
+    },
+    "y": {
+      "title": "CO2 concentration in ppm",
+      "type": "quantitative",
+      "scale": {"zero": false}
+    },
+    "color": {
+      "field": "decade",
+      "type": "ordinal",
+      "scale": {"scheme": "magma"},
+      "legend": null
+    }
+  },
+
+  "layer": [
+    {
+      "mark": "line",
+      "encoding": {
+        "x": {"field": "scaled_date"},
+        "y": {"field": "CO2"}
+      }
     },
     {
-      "scale": "y",
-      "orient": "left",
-      "grid": false,
-      "title": "CO2 concentration in ppm",
-      "labelOverlap": true,
-      "tickCount": {"signal": "ceil(height/40)"},
-      "zindex": 0
+      "mark": {"type": "text", "baseline": "top", "aria": false},
+      "encoding": {
+        "x": {"aggregate": "min", "field": "scaled_date"},
+        "y": {"aggregate": {"argmin": "scaled_date"}, "field": "CO2"},
+        "text": {"aggregate": {"argmin": "scaled_date"}, "field": "year"}
+      }
+    },
+    {
+      "mark": {"type": "text", "aria": false},
+      "encoding": {
+        "x": {"aggregate": "max", "field": "scaled_date"},
+        "y": {"aggregate": {"argmax": "scaled_date"}, "field": "CO2"},
+        "text": {"aggregate": {"argmax": "scaled_date"}, "field": "year"}
+      }
     }
   ],
-  "config": {"style": {"text": {"align": "left", "dx": 3, "dy": 1}}}
+  "config": {"text": {"align": "left", "dx": 3, "dy": 1}}
 }`
 
 const co2Data = `Date,CO2,adjusted CO2
