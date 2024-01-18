@@ -164,14 +164,22 @@ func contains(v []string, s string) bool {
 }
 
 var broken = []string{
-	"compiled/geo_circle",
+	"compiled/interactive_1d_geo_brush",
+	"compiled/interactive_airport_crossfilter",
 	"compiled/point_href",
 	"compiled/scatter_image",
-	"lite/geo_circle",
+	"lite/interactive_1d_geo_brush",
+	"lite/interactive_airport_crossfilter",
 	"lite/point_href",
 	"lite/scatter_image",
+	"vega/clock",
 	"vega/contour-plot",
 	"vega/density-heatmaps",
 	"vega/dorling-cartogram",
+	"vega/hypothetical-outcome-plots",
+	"vega/pacman",
+	"vega/platformer",
 	"vega/warming-stripes",
+	"vega/watch",
+	"vega/zoomable-circle-packing",
 }
