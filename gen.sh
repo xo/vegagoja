@@ -8,7 +8,7 @@ SRC=$(realpath $(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd))
 
 set -e
 
-WORKDIR=$HOME/src/vega
+WORKDIR=$HOME/src/charts
 
 mkdir -p $WORKDIR
 
