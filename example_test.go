@@ -11,7 +11,7 @@ import (
 
 func Example() {
 	vega := vegagoja.New(
-		vegagoja.WithDemoData(),
+		vegagoja.WithPrefixedSourceDir("data/", "testdata/data/"),
 	)
 	svg, err := vega.Render(context.Background(), candlestickSpec)
 	if err != nil {

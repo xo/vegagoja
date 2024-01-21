@@ -108,6 +108,7 @@ const candlestickSpec = `{
 ## TODO
 
 - Rewrite as native Go
+- Add [Kerry Kolosko's](https://kerrykolosko.com/portfolio-category/deneb-templates/) templates as tests
 
 ## About
 

@@ -13,7 +13,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -24,6 +23,7 @@ import (
 	"github.com/dop251/goja"
 	gojaparser "github.com/dop251/goja/parser"
 	"github.com/dop251/goja_nodejs/console"
+	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/dop251/goja_nodejs/require"
 )
 
@@ -34,15 +34,13 @@ import (
 // [Vega-Lite]: https://vega.github.io/vega-lite/examples/
 // [goja]: https://github.com/dop251/goja
 type Vega struct {
-	r       *goja.Runtime
-	vegaVer func() string
-	liteVer func() string
-	render  renderFunc
-	compile compileFunc
-	logger  func(...interface{})
-	source  fs.FS
-	once    sync.Once
-	err     error
+	logger     func(...interface{})
+	vegaJs     *goja.Program
+	vegaLiteJs *goja.Program
+	vegagojaJs *goja.Program
+	source     fs.FS
+	once       sync.Once
+	err        error
 }
 
 // New creates a new vega instance.
@@ -57,50 +55,63 @@ func New(opts ...Option) *Vega {
 // init initializes the vega instance.
 func (vm *Vega) init() error {
 	vm.once.Do(func() {
-		registry := new(require.Registry)
-		r := goja.New()
-		registry.Enable(r)
-		console.Enable(r)
-		for _, name := range []string{"vega.min.js", "vega-lite.min.js", "vegagoja.js"} {
-			buf, err := vegaScripts.ReadFile(name)
-			if err != nil {
-				vm.err = fmt.Errorf("unable to load %s: %w", name, err)
-				return
-			}
-			prg, err := goja.Parse(name, string(buf), gojaparser.WithDisableSourceMaps)
-			if err != nil {
-				vm.err = fmt.Errorf("unable to parse %s: %w", name, err)
-				return
-			}
-			p, err := goja.CompileAST(prg, true)
-			if err != nil {
-				vm.err = fmt.Errorf("unable to compile %s: %w", name, err)
-				return
-			}
-			if _, err := r.RunProgram(p); err != nil {
-				vm.err = fmt.Errorf("unable to run %s: %w", name, err)
-				return
-			}
-		}
-		if err := r.ExportTo(r.Get("vega_version"), &vm.vegaVer); err != nil {
-			vm.err = fmt.Errorf("unable to bind vega_version func: %w", err)
+		if vm.vegaJs, vm.err = compileEmbeddedScript("vega.min.js"); vm.err != nil {
 			return
 		}
-		if err := r.ExportTo(r.Get("lite_version"), &vm.liteVer); err != nil {
-			vm.err = fmt.Errorf("unable to bind lite_version func: %w", err)
+		if vm.vegaLiteJs, vm.err = compileEmbeddedScript("vega-lite.min.js"); vm.err != nil {
 			return
 		}
-		if err := r.ExportTo(r.Get("render"), &vm.render); err != nil {
-			vm.err = fmt.Errorf("unable to bind render func: %w", err)
+		if vm.vegagojaJs, vm.err = compileEmbeddedScript("vegagoja.js"); vm.err != nil {
 			return
 		}
-		if err := r.ExportTo(r.Get("compile"), &vm.compile); err != nil {
-			vm.err = fmt.Errorf("unable to bind compile func: %w", err)
-			return
-		}
-		vm.r = r
 	})
 	return vm.err
+}
+
+// run runs the embedded javascripts on the goja runtime, and exports a symbol
+// name to v.
+func (vm *Vega) run(r *goja.Runtime, name string, v interface{}) error {
+	if _, err := r.RunProgram(vm.vegaJs); err != nil {
+		return err
+	}
+	if _, err := r.RunProgram(vm.vegaLiteJs); err != nil {
+		return err
+	}
+	if _, err := r.RunProgram(vm.vegagojaJs); err != nil {
+		return err
+	}
+	if name != "" {
+		return r.ExportTo(r.Get(name), v)
+	}
+	return nil
+}
+
+// loop instantiates a new loop, and waits for it to terminate, or until the
+// context is closed.
+func (vm *Vega) loop(ctx context.Context, f func(*goja.Runtime) error) error {
+	// init
+	if err := vm.init(); err != nil {
+		return err
+	}
+	mod := console.RequireWithPrinter(vm)
+	registry := new(require.Registry)
+	registry.RegisterNativeModule(console.ModuleName, mod)
+	loop := eventloop.NewEventLoop(
+		eventloop.WithRegistry(registry),
+	)
+	errch := make(chan error, 1)
+	go func() {
+		loop.Run(func(r *goja.Runtime) {
+			defer close(errch)
+			errch <- f(r)
+		})
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errch:
+		return err
+	}
 }
 
 // Version returns the embedded vega version.
@@ -108,9 +119,19 @@ func (vm *Vega) Version() (string, string, error) {
 	if err := vm.init(); err != nil {
 		return "", "", err
 	}
-	vegaVer := strings.TrimPrefix(vm.vegaVer(), "v")
-	liteVer := strings.TrimPrefix(vm.liteVer(), "v")
-	return vegaVer, liteVer, nil
+	r := goja.New()
+	var f func() ([]string, error)
+	if err := vm.run(r, "version", &f); err != nil {
+		return "", "", err
+	}
+	ver, err := f()
+	switch {
+	case err != nil:
+		return "", "", err
+	case len(ver) != 2:
+		return "", "", ErrInvalidResult
+	}
+	return ver[0], ver[1], nil
 }
 
 // CompileSpec compiles a vega-lite specification to a vega specification,
@@ -120,7 +141,11 @@ func (vm *Vega) CompileSpec(spec string) (string, error) {
 	if err := vm.init(); err != nil {
 		return "", err
 	}
-	return vm.compile(vm.log, spec)
+	var compile compileFunc
+	if err := vm.run(goja.New(), "compile", &compile); err != nil {
+		return "", err
+	}
+	return compile(vm.log, spec)
 }
 
 // Compile compiles a vega-lite specification to a vega specification.
@@ -148,41 +173,39 @@ func (vm *Vega) Compile(spec string) (string, error) {
 	return buf.String(), nil
 }
 
-// Render renders a vega visualization spec as a SVG.
-func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error) {
-	if spec == "" {
-		return
-	}
+// CheckSpec takes a spec and checks that it is a vega or vega-lite spec. If it
+// is a vega-lite spec, it will returned the compiled vega spec.
+func (vm *Vega) CheckSpec(spec string) (string, error) {
 	// unmarshal
 	var m map[string]interface{}
-	if err = json.Unmarshal([]byte(spec), &m); err != nil {
-		err = ErrInvalidJSON
-		return
+	if err := json.Unmarshal([]byte(spec), &m); err != nil {
+		return "", ErrInvalidJSON
 	}
 	// check schema
 	s, ok := m["$schema"]
 	if !ok {
-		err = ErrMissingSchema
-		return
+		return "", ErrMissingSchema
 	}
 	schema, ok := s.(string)
 	switch {
 	case !ok:
-		err = ErrSchemaInvalid
-		return
+		return "", ErrSchemaInvalid
 	case !strings.HasPrefix(schema, "https://vega.github.io/schema/vega"):
-		err = ErrNotVegaOrVegaLiteSchema
-		return
+		return "", ErrNotVegaOrVegaLiteSchema
+	case strings.HasPrefix(schema, "https://vega.github.io/schema/vega/"):
+		return spec, nil
 	}
 	// convert vega-lite -> vega
-	if strings.HasPrefix(schema, "https://vega.github.io/schema/vega-lite/") {
-		if spec, err = vm.Compile(spec); err != nil {
-			err = fmt.Errorf("unable to compile vega-lite spec: %w", err)
-			return
-		}
+	spec, err := vm.Compile(spec)
+	if err != nil {
+		return "", fmt.Errorf("unable to compile vega-lite spec: %w", err)
 	}
-	// init
-	if err = vm.init(); err != nil {
+	return spec, nil
+}
+
+// Render renders a vega visualization spec as a SVG.
+func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error) {
+	if spec, err = vm.CheckSpec(spec); err != nil {
 		return
 	}
 	defer func() {
@@ -194,26 +217,48 @@ func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error)
 			}
 		}
 	}()
-	ch, errch := make(chan struct{}, 1), make(chan error, 1)
-	err = vm.render(vm.log, spec, vm.data(), func(s string) {
-		defer close(ch)
-		defer close(errch)
-		res = s
-	}, func(e string) {
-		defer close(ch)
-		defer close(errch)
-		errch <- errors.New(e)
+	err = vm.loop(ctx, func(r *goja.Runtime) error {
+		var f renderFunc
+		if err := vm.run(r, "render", &f); err != nil {
+			return err
+		}
+		promise := f(vm.log, spec, vm.data())
+		switch state := promise.State(); state {
+		case goja.PromiseStateFulfilled:
+			result := promise.Result()
+			if result == nil {
+				return ErrInvalidResult
+			}
+			res = result.String()
+		case goja.PromiseStateRejected:
+			result := promise.Result()
+			if obj, ok := result.(*goja.Object); ok {
+				if stack := obj.Get("stack"); stack != nil {
+					return fmt.Errorf("caught error during rendering: %s", stack.String())
+				}
+			}
+			return fmt.Errorf("unknown rejected promise result: %v", result)
+		default:
+			return fmt.Errorf("unknown promise state: %v", state)
+		}
+		return nil
 	})
-	if err != nil {
-		return
-	}
-	select {
-	case <-ctx.Done():
-		err = ctx.Err()
-	case err = <-errch:
-	case <-ch:
-	}
 	return
+}
+
+// Log satisfies the [goja.Printer] interface.
+func (vm *Vega) Log(s string) {
+	vm.log([]string{"LOG", s})
+}
+
+// Warn satisfies the [goja.Printer] interface.
+func (vm *Vega) Warn(s string) {
+	vm.log([]string{"WARN", s})
+}
+
+// Error satisfies the [goja.Printer] interface.
+func (vm *Vega) Error(s string) {
+	vm.log([]string{"ERROR", s})
 }
 
 // log is the script callback for logging a message.
@@ -300,15 +345,6 @@ func WithSources(sources ...fs.FS) Option {
 	}
 }
 
-// WithDemoData is a vega option to add the vega demo data. Useful for
-// rendering Vega's example visualizations. Additional source file systems
-// ([fs.FS]) can be provided that will take priority when loading data.
-func WithDemoData(sources ...fs.FS) Option {
-	return func(vm *Vega) {
-		vm.source = NewSource(append(sources, vegaData)...)
-	}
-}
-
 // WithDataDir is a vega option to add a data source that loads data from a
 // directory.
 func WithDataDir(dir string) Option {
@@ -340,6 +376,8 @@ const (
 	ErrSchemaInvalid Error = "$schema invalid"
 	// ErrNotVegaOrVegaLiteSchema is the not vega or vega-lite schema error.
 	ErrNotVegaOrVegaLiteSchema Error = "not vega or vega-lite schema"
+	// ErrInvalidResult is the invalid result error.
+	ErrInvalidResult Error = "invalid result"
 )
 
 // Error satisfies the [error] interface.
@@ -347,11 +385,33 @@ func (err Error) Error() string {
 	return string(err)
 }
 
+// compile compiles a goja program.
+func compile(name, src string) (*goja.Program, error) {
+	prg, err := goja.Parse(name, src, gojaparser.WithDisableSourceMaps)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse %s: %w", name, err)
+	}
+	p, err := goja.CompileAST(prg, true)
+	if err != nil {
+		return nil, fmt.Errorf("unable to compile %s: %w", name, err)
+	}
+	return p, nil
+}
+
+// compileEmbeddedScript compiles the embedded script as a goja program.
+func compileEmbeddedScript(name string) (*goja.Program, error) {
+	buf, err := jsScripts.ReadFile(name)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load %s: %w", name, err)
+	}
+	return compile(name, string(buf))
+}
+
 // loggerFunc is the signature for the log func.
 type loggerFunc func([]string)
 
 // renderFunc is the signature for the render func.
-type renderFunc func(logf loggerFunc, spec string, data interface{}, cb, errcb func(string)) error
+type renderFunc func(logf loggerFunc, spec string, data interface{}) *goja.Promise
 
 // compileFunc is the signature for the compile func.
 type compileFunc func(logf loggerFunc, spec string) (string, error)
@@ -366,12 +426,7 @@ var vegaVersionTxt string
 //go:embed vega-lite-version.txt
 var liteVersionTxt string
 
-// vegaScripts are the embedded vega javascripts.
+// jsScripts are the embedded vega javascripts.
 //
 //go:embed *.js
-var vegaScripts embed.FS
-
-// vegaData is the embedded vega data.
-//
-//go:embed data
-var vegaData embed.FS
+var jsScripts embed.FS

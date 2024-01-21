@@ -26,6 +26,52 @@ func TestVersion(t *testing.T) {
 	t.Logf("vega: %s vega-lite: %s", vegaVer, liteVer)
 }
 
+func TestCheckSpec(t *testing.T) {
+	var files []string
+	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case info.IsDir() || !suffixRE.MatchString(name):
+			return nil
+		}
+		files = append(files, name)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	for _, nn := range files {
+		name := nn
+		n := strings.Split(name, string(os.PathSeparator))
+		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
+		testName := path.Join(n[1:]...)
+		t.Run(testName, func(t *testing.T) {
+			testCheckSpec(t, name)
+		})
+	}
+}
+
+func testCheckSpec(t *testing.T, name string) {
+	t.Helper()
+	t.Parallel()
+	spec, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	vm := New(WithLogger(t.Log))
+	start := time.Now()
+	res, err := vm.CheckSpec(string(spec))
+	total := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if os.Getenv("VERBOSE") != "" {
+		t.Logf("---\n%s\n---", res)
+	}
+	t.Logf("duration: %s", total)
+}
+
 func TestCompile(t *testing.T) {
 	var files []string
 	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
@@ -59,14 +105,10 @@ func testCompile(t *testing.T, name string) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	opts := []Option{
-		WithLogger(t.Log),
-		WithDemoData(),
-	}
-	vm := New(opts...)
+	vm := New(WithLogger(t.Log))
 	start := time.Now()
 	res, err := vm.Compile(string(spec))
-	total := time.Now().Sub(start)
+	total := time.Since(start)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -123,7 +165,7 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	defer cancel()
 	opts := []Option{
 		WithLogger(t.Log),
-		WithDemoData(),
+		WithPrefixedSourceDir("data/", "testdata/data/"),
 	}
 	if strings.HasPrefix(testName, "deneb/") {
 		opts = append(opts, WithPrefixedSourceDir("deneb/", "testdata/deneb"))
@@ -131,9 +173,9 @@ func testRender(t *testing.T, ctx context.Context, testName, name string, timeou
 	vm := New(opts...)
 	start := time.Now()
 	res, err := vm.Render(ctx, string(spec))
-	total := time.Now().Sub(start)
+	total := time.Since(start)
 	switch {
-	case err != nil && contains(broken, testName):
+	case err != nil && isBroken(testName):
 		t.Logf("IGNORING: expected no error, got: %v", err)
 		return
 	case err != nil:
@@ -154,32 +196,20 @@ func cleanString(s string) string {
 	return strings.TrimPrefix(strings.TrimSpace(s), "v")
 }
 
-func contains(v []string, s string) bool {
-	for _, ss := range v {
-		if ss == s {
+func isBroken(name string) bool {
+	for _, ss := range []string{
+		"compiled/point_href",
+		"compiled/scatter_image",
+		"lite/point_href",
+		"lite/scatter_image",
+		"vega/contour-plot",
+		"vega/density-heatmaps",
+		"vega/platformer",
+		"vega/warming-stripes",
+	} {
+		if ss == name {
 			return true
 		}
 	}
 	return false
-}
-
-var broken = []string{
-	"compiled/interactive_1d_geo_brush",
-	"compiled/interactive_airport_crossfilter",
-	"compiled/point_href",
-	"compiled/scatter_image",
-	"lite/interactive_1d_geo_brush",
-	"lite/interactive_airport_crossfilter",
-	"lite/point_href",
-	"lite/scatter_image",
-	"vega/clock",
-	"vega/contour-plot",
-	"vega/density-heatmaps",
-	"vega/dorling-cartogram",
-	"vega/hypothetical-outcome-plots",
-	"vega/pacman",
-	"vega/platformer",
-	"vega/warming-stripes",
-	"vega/watch",
-	"vega/zoomable-circle-packing",
 }
