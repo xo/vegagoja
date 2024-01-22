@@ -247,9 +247,6 @@
         "enter": {
           "fill": {"signal": "labelDataSrcColor"},
           "text": {"value": "Data Source: NASA 🔗"},
-          "href": {
-            "value": "https://climate.nasa.gov/vital-signs/global-temperature/"
-          },
           "cursor": {"value": "pointer"}
         },
         "update": {

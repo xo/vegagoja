@@ -39,9 +39,6 @@
           "tooltip": {
             "signal": "isValid(datum[\"Name\"]) ? datum[\"Name\"] : \"\"+datum[\"Name\"]"
           },
-          "href": {
-            "signal": "isValid(datum[\"url\"]) ? datum[\"url\"] : \"\"+datum[\"url\"]"
-          },
           "ariaRoleDescription": {"value": "point"},
           "description": {
             "signal": "\"Horsepower: \" + (format(datum[\"Horsepower\"], \"\")) + \"; Miles_per_Gallon: \" + (format(datum[\"Miles_per_Gallon\"], \"\")) + \"; Origin: \" + (isValid(datum[\"Origin\"]) ? datum[\"Origin\"] : \"\"+datum[\"Origin\"]) + \"; Name: \" + (isValid(datum[\"Name\"]) ? datum[\"Name\"] : \"\"+datum[\"Name\"]) + \"; url: \" + (isValid(datum[\"url\"]) ? datum[\"url\"] : \"\"+datum[\"url\"])"

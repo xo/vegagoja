@@ -212,40 +212,6 @@
       },
       "marks": [
         {
-          "type": "image",
-          "encode": {
-            "enter": {
-              "url": {
-                "value": "https://i.ibb.co/ZBc5RZK/Screen-Shot-2020-12-13-at-3-36-09-PM.png"
-              },
-              "smooth": {
-                "value": false
-              }
-            },
-            "update": {
-              "opacity": {
-                "value": 0.25
-              },
-              "width": {
-                "scale": "pixels",
-                "signal": "350"
-              },
-              "y": {
-                "scale": "pixels",
-                "signal": "-40"
-              },
-              "x": {
-                "scale": "pixels",
-                "signal": "scrollX/2"
-              },
-              "height": {
-                "scale": "pixels",
-                "signal": "200"
-              }
-            }
-          }
-        },
-        {
           "type": "group",
           "encode": {
             "update": {

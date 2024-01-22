@@ -197,15 +197,12 @@ func cleanString(s string) string {
 }
 
 func isBroken(name string) bool {
+	// these are all broken due to rendering image data as marks
 	for _, ss := range []string{
-		"compiled/point_href",
 		"compiled/scatter_image",
-		"lite/point_href",
 		"lite/scatter_image",
 		"vega/contour-plot",
 		"vega/density-heatmaps",
-		"vega/platformer",
-		"vega/warming-stripes",
 	} {
 		if ss == name {
 			return true
