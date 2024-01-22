@@ -36,7 +36,7 @@ function version() {
 }
 
 function compile(logf, spec) {
-  var res = {};
+  let res;
   try {
     res = vegaLite.compile(parse(spec), {
       logger: logger(logf),
@@ -51,7 +51,7 @@ function compile(logf, spec) {
 function loader(logf, loadf) {
   return {
     async load(name, res) {
-      var s = "";
+      let s;
       try {
         s = loadf(name, res.response);
       } catch (e) {
@@ -93,8 +93,8 @@ function loader(logf, loadf) {
 }
 
 async function render(logf, spec, loadf) {
-  var runtime = vega.parse(parse(spec));
-  var view = new vega.View(runtime, {
+  let runtime = vega.parse(parse(spec));
+  let view = new vega.View(runtime, {
     logLevel: vega.Debug,
     logger: logger(logf),
     loader: loader(logf, loadf),
