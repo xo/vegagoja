@@ -96,6 +96,8 @@ async function render(logf, spec, loadf) {
   let runtime = vega.parse(parse(spec));
   let view = new vega.View(runtime, {
     logLevel: vega.Debug,
+    hover: false,
+    tooltip: null,
     logger: logger(logf),
     loader: loader(logf, loadf),
   });

@@ -25,6 +25,7 @@ import (
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/eventloop"
 	"github.com/dop251/goja_nodejs/require"
+	"github.com/mitchellh/mapstructure"
 )
 
 // Vega handles rendering [Vega] and [Vega-Lite] visualizations as SVGs,
@@ -38,6 +39,7 @@ type Vega struct {
 	vegaJs     *goja.Program
 	vegaLiteJs *goja.Program
 	vegagojaJs *goja.Program
+	params     map[string]interface{}
 	source     fs.FS
 	once       sync.Once
 	err        error
@@ -164,17 +166,12 @@ func (vm *Vega) Compile(spec string) (string, error) {
 	if !ok {
 		return "", ErrInvalidCompiledSpec
 	}
-	buf := new(bytes.Buffer)
-	enc := json.NewEncoder(buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(s); err != nil {
-		return "", err
-	}
-	return buf.String(), nil
+	return jsonEncode(s)
 }
 
 // CheckSpec takes a spec and checks that it is a vega or vega-lite spec. If it
-// is a vega-lite spec, it will returned the compiled vega spec.
+// is a vega-lite spec, it will returned the compiled vega spec, and
+// interpolate params.
 func (vm *Vega) CheckSpec(spec string) (string, error) {
 	// unmarshal
 	var m map[string]interface{}
@@ -195,12 +192,51 @@ func (vm *Vega) CheckSpec(spec string) (string, error) {
 	case strings.HasPrefix(schema, "https://vega.github.io/schema/vega/"):
 		return spec, nil
 	}
+	// interpolate
+	if vm.params != nil {
+		var p struct {
+			Params []map[string]interface{} `mapstructure:"params"`
+		}
+		switch err := mapstructure.Decode(m, &p); {
+		case err != nil:
+			return "", err
+		case len(p.Params) != 0:
+			if spec, err = paramInterpolate(m, p.Params, vm.params); err != nil {
+				return "", err
+			}
+		}
+	}
 	// convert vega-lite -> vega
 	spec, err := vm.Compile(spec)
 	if err != nil {
 		return "", fmt.Errorf("unable to compile vega-lite spec: %w", err)
 	}
 	return spec, nil
+}
+
+// ParamExtract extracts the params from the spec.
+func (vm *Vega) ParamExtract(spec string) ([]Param, error) {
+	// unmarshal
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(spec), &m); err != nil {
+		return nil, ErrInvalidJSON
+	}
+	var p struct {
+		Params []Param                `mapstructure:"params"`
+		Other  map[string]interface{} `mapstructure:",remain"`
+	}
+	md := new(mapstructure.Metadata)
+	dec, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Metadata: md,
+		Result:   &p,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(m); err == nil {
+		return p.Params, nil
+	}
+	return nil, nil
 }
 
 // Render renders a vega visualization spec as a SVG.
@@ -222,7 +258,7 @@ func (vm *Vega) Render(ctx context.Context, spec string) (res string, err error)
 		if err := vm.run(r, "render", &f); err != nil {
 			return err
 		}
-		promise := f(vm.log, spec, vm.data())
+		promise := f(vm.log, spec, vm.load)
 		switch state := promise.State(); state {
 		case goja.PromiseStateFulfilled:
 			result := promise.Result()
@@ -272,11 +308,6 @@ func (vm *Vega) log(s []string) {
 	}
 }
 
-// data returns the data.
-func (vm *Vega) data() interface{} {
-	return vm.load
-}
-
 // load loads data from sources.
 func (vm *Vega) load(name string) (string, error) {
 	if vm.source != nil {
@@ -301,6 +332,13 @@ type Option func(*Vega)
 func WithLogger(logger func(...interface{})) Option {
 	return func(vm *Vega) {
 		vm.logger = logger
+	}
+}
+
+// WithParams is a vega option to set interpolated variables.
+func WithParams(params map[string]interface{}) Option {
+	return func(vm *Vega) {
+		vm.params = params
 	}
 }
 
@@ -405,6 +443,36 @@ func compileEmbeddedScript(name string) (*goja.Program, error) {
 		return nil, fmt.Errorf("unable to load %s: %w", name, err)
 	}
 	return compile(name, string(buf))
+}
+
+// paramInterpolate interpolates param values.
+func paramInterpolate(m map[string]interface{}, params []map[string]interface{}, values map[string]interface{}) (string, error) {
+	for _, param := range params {
+		name, ok := param["name"]
+		if !ok {
+			continue
+		}
+		s, ok := name.(string)
+		if !ok {
+			continue
+		}
+		if value, ok := values[s]; ok {
+			param["value"] = value
+		}
+	}
+	m["params"] = params
+	return jsonEncode(m)
+}
+
+// jsonEncode encodes v as json.
+func jsonEncode(v interface{}) (string, error) {
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 // loggerFunc is the signature for the log func.

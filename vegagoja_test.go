@@ -27,25 +27,11 @@ func TestVersion(t *testing.T) {
 }
 
 func TestCheckSpec(t *testing.T) {
-	var files []string
-	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
-		switch {
-		case err != nil:
-			return err
-		case info.IsDir() || !suffixRE.MatchString(name):
-			return nil
-		}
-		files = append(files, name)
-		return nil
+	files := testFiles(t, func(name string) bool {
+		return suffixRE.MatchString(name)
 	})
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
 	for _, nn := range files {
-		name := nn
-		n := strings.Split(name, string(os.PathSeparator))
-		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
-		testName := path.Join(n[1:]...)
+		name, testName := testName(nn)
 		t.Run(testName, func(t *testing.T) {
 			testCheckSpec(t, name)
 		})
@@ -73,25 +59,11 @@ func testCheckSpec(t *testing.T, name string) {
 }
 
 func TestCompile(t *testing.T) {
-	var files []string
-	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
-		switch {
-		case err != nil:
-			return err
-		case info.IsDir() || !strings.HasSuffix(name, ".vl.json"):
-			return nil
-		}
-		files = append(files, name)
-		return nil
+	files := testFiles(t, func(name string) bool {
+		return strings.HasSuffix(name, ".vl.json")
 	})
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
 	for _, nn := range files {
-		name := nn
-		n := strings.Split(name, string(os.PathSeparator))
-		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
-		testName := path.Join(n[1:]...)
+		name, testName := testName(nn)
 		t.Run(testName, func(t *testing.T) {
 			testCompile(t, name)
 		})
@@ -118,6 +90,34 @@ func testCompile(t *testing.T, name string) {
 	t.Logf("duration: %s", total)
 }
 
+func TestParamExtract(t *testing.T) {
+	files := testFiles(t, func(name string) bool {
+		return strings.HasSuffix(name, ".vl.json")
+	})
+	for _, nn := range files {
+		name, testName := testName(nn)
+		t.Run(testName, func(t *testing.T) {
+			testParamExtract(t, name)
+		})
+	}
+}
+
+func testParamExtract(t *testing.T, name string) {
+	t.Helper()
+	t.Parallel()
+	spec, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	vm := New(WithLogger(t.Log))
+	switch params, err := vm.ParamExtract(string(spec)); {
+	case err != nil:
+		t.Fatalf("expected no error, got: %v", err)
+	case len(params) != 0:
+		t.Logf("params: %v", params)
+	}
+}
+
 func TestRender(t *testing.T) {
 	ctx := context.Background()
 	timeout := 1 * time.Minute
@@ -127,25 +127,11 @@ func TestRender(t *testing.T) {
 			t.Fatalf("could not parse timeout %q: %v", s, err)
 		}
 	}
-	var files []string
-	err := filepath.Walk("testdata", func(name string, info fs.FileInfo, err error) error {
-		switch {
-		case err != nil:
-			return err
-		case info.IsDir() || !suffixRE.MatchString(name):
-			return nil
-		}
-		files = append(files, name)
-		return nil
+	files := testFiles(t, func(name string) bool {
+		return suffixRE.MatchString(name)
 	})
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
 	for _, nn := range files {
-		name := nn
-		n := strings.Split(name, string(os.PathSeparator))
-		n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
-		testName := path.Join(n[1:]...)
+		name, testName := testName(nn)
 		t.Run(testName, func(t *testing.T) {
 			testRender(t, ctx, testName, name, timeout)
 		})
@@ -209,4 +195,29 @@ func isBroken(name string) bool {
 		}
 	}
 	return false
+}
+
+func testFiles(t *testing.T, f func(string) bool) []string {
+	t.Helper()
+	var files []string
+	err := filepath.Walk("testdata", func(name string, fi fs.FileInfo, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case fi.IsDir() || !f(name):
+			return nil
+		}
+		files = append(files, name)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	return files
+}
+
+func testName(name string) (string, string) {
+	n := strings.Split(name, string(os.PathSeparator))
+	n[len(n)-1] = suffixRE.ReplaceAllString(n[len(n)-1], "")
+	return name, path.Join(n[1:]...)
 }
