@@ -53,7 +53,7 @@ git_checkout_reset vega-lite "https://github.com/${REPO_VL}.git"
 
 pushd $WORKDIR/vega &> /dev/null
 (set -x;
-  yarn install
+  yarn install || :
   yarn build
 )
 popd &> /dev/null
@@ -64,7 +64,7 @@ perl -0pi -e "s%targets:\s*{[^}]+}%targets: ${BABEL_CONFIG}%gms" babel.config.js
 sed -i "1s%^%import structuredClone from '@ungap/structured-clone';\\n\\n%" src/util.ts
 
 (set -x;
-  yarn install
+  yarn install || :
   yarn add -D \
     @babel/cli \
     @ungap/structured-clone \
